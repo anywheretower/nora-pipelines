@@ -1,0 +1,98 @@
+export const skills = [
+  {
+    id: 'nora-creatividad-original',
+    title: 'nora-creatividad-original',
+    badge: 'Text2Img',
+    badgeClass: 'badge-gen',
+    status: 'active',
+    description: 'Genera creatividades 100% originales sin imagen de referencia. Lee marca → genera concepto (7 motores) → construye prompt (6 bloques Qwen) → escribe textos → inserta en Supabase paso 4 → ejecuta comfy-text2img.mjs.',
+    meta: [
+      { icon: '⚡', label: 'Activa', value: 'bajo demanda — /nora-creatividad-original' },
+      { icon: '📤', label: 'Entrega', value: 'creatividad en paso 4 + imagen generada vía ComfyUI' },
+      { icon: '🔧', label: 'Script', value: 'comfy-text2img.mjs --once --id=N' },
+      { icon: '📋', label: 'Escribe', value: 'creatividades — prompt, concepto, copy, slogan_headline, subtitulo, cta, logo, origen, estado, + campos estrategia' },
+    ],
+    rev: 'Rev: 2026-03-12',
+    deps: '← imagen-concepto + prompt-master (integrados)',
+    path: '/Users/imac/Desktop/noracode/.agents/skills/nora-creatividad-original/SKILL.md',
+  },
+  {
+    id: 'nora-imagen-concepto',
+    title: 'nora-imagen-concepto',
+    badge: 'Pre-generación',
+    badgeClass: 'badge-support',
+    status: 'active',
+    description: 'Ideación conceptual para imagen. 7 motores creativos: desplazamiento de rubro, metáfora visual, tensión narrativa, emoción primaria, inversión de expectativa, analogía cross-dominio, storytelling en un frame.',
+    meta: [
+      { icon: '⚡', label: 'Activa', value: 'primer paso antes de cualquier generación de imagen' },
+      { icon: '📤', label: 'Entrega', value: 'dirección creativa (concepto + motor + emoción + giro)' },
+      { icon: '🛡️', label: 'Validación', value: '5 filtros: stopping power, memorabilidad, novedad, coherencia, espacio texto' },
+    ],
+    rev: 'Rev: 2026-03-12',
+    deps: '↓ alimenta a creatividad-original',
+    path: '/Users/imac/Desktop/noracode/.agents/skills/nora-imagen-concepto/SKILL.md',
+  },
+  {
+    id: 'nora-prompt-master',
+    title: 'nora-prompt-master',
+    badge: 'Guía integrada',
+    badgeClass: 'badge-support',
+    status: 'active',
+    description: 'Guía centralizada de prompts Qwen 2.5 text-to-image. Estructura de 6 bloques, 600-1500 chars. Frases probadas, reglas de negativos (Qwen NO entiende negaciones), checklist de validación.',
+    meta: [
+      { icon: '⚡', label: 'Aplica a', value: 'original, iteración — todo prompt text2img' },
+      { icon: '📐', label: '6 bloques', value: 'calidad → concepto → composición → narrativa → iluminación → negativos' },
+      { icon: '🚫', label: 'Regla crítica', value: 'Qwen ignora negativos — describir solo lo que SÍ quieres' },
+    ],
+    rev: 'Rev: 2026-03-12',
+    deps: '⬇ paso final — valida todo prompt',
+    path: '/Users/imac/Desktop/noracode/.agents/skills/nora-prompt-master/SKILL.md',
+  },
+  {
+    id: 'nora-imagen-iteracion',
+    title: 'nora-imagen-iteracion',
+    badge: 'QA Auto',
+    badgeClass: 'badge-qa',
+    status: 'active',
+    description: 'Auto-evaluación contra 3 dimensiones (técnica, marca, impacto). Score ≥4.0 pasa, <4.0 crea 2 versiones nuevas con prompts ajustados. Máx 3 rondas. Nunca sobrescribe la original.',
+    meta: [
+      { icon: '⚡', label: 'Activa', value: 'bajo demanda — /nora-imagen-iteracion' },
+      { icon: '📤', label: 'Entrega', value: '2 versiones con enfoques distintos o aprobada con score' },
+      { icon: '🔧', label: 'Script', value: 'comfy-text2img.mjs --once --id=N (por cada versión)' },
+      { icon: '📋', label: 'Escribe', value: '2 nuevas creatividades paso 4 + original → iteracion_resuelta' },
+    ],
+    rev: 'Rev: 2026-03-12',
+    deps: '→ prompt-master (al ajustar prompts)',
+    path: '/Users/imac/Desktop/noracode/.agents/skills/nora-imagen-iteracion/SKILL.md',
+  },
+]
+
+export const scriptCards = [
+  {
+    id: 'comfy-text2img',
+    title: 'comfy-text2img.mjs',
+    badge: 'Script',
+    badgeClass: 'badge-script',
+    status: 'active',
+    description: 'Genera imágenes 3:4 (1104×1472) desde texto vía ComfyUI remoto (PC-2). Busca creatividades en paso 4, envía workflow a ComfyUI, descarga resultado vía HTTP, sube a Supabase Storage, actualiza a paso 5.',
+    meta: [
+      { icon: '🔧', label: 'Uso', value: 'node scripts/comfy-text2img.mjs --once [--id=123]' },
+      { icon: '🖥️', label: 'ComfyUI', value: 'http://192.168.1.26:8188 (PC-2, RTX 5080)' },
+      { icon: '⏱️', label: 'Tiempo', value: '~1.5 min/imagen (primera ~2.5 min carga modelo)' },
+      { icon: '⚠️', label: 'Límite', value: 'máx 4 imágenes por corrida (VRAM leak)' },
+      { icon: '🔄', label: 'Método', value: 'POST /prompt → poll /history → GET /view → upload Supabase' },
+    ],
+    rev: 'Pipeline: paso 4 → paso 5 + para_revision',
+    deps: 'Requiere: ComfyUI corriendo en PC-2',
+    path: '/Users/imac/Desktop/noracode/nora-pipelines/scripts/comfy-text2img.mjs',
+  },
+]
+
+export const sharedDocs = [
+  { name: 'SCHEMA.md', desc: 'Tablas, campos, tipos, enums', path: '/Users/imac/Desktop/noracode/nora-pipelines/docs/SCHEMA.md' },
+  { name: 'PIPELINE.md', desc: 'Flujo de estados y scripts', path: '/Users/imac/Desktop/noracode/nora-pipelines/docs/PIPELINE.md' },
+  { name: 'GUIA-TEXTOS.md', desc: 'Reglas de copy, headlines, CTAs', path: '/Users/imac/Desktop/noracode/nora-pipelines/docs/GUIA-TEXTOS.md' },
+  { name: 'IDIOMA.md', desc: 'Reglas español/inglés', path: '/Users/imac/Desktop/noracode/nora-pipelines/docs/IDIOMA.md' },
+  { name: 'HERRAMIENTAS.md', desc: 'Tools disponibles (Bash, Supabase, ComfyUI)', path: '/Users/imac/Desktop/noracode/nora-pipelines/docs/HERRAMIENTAS.md' },
+  { name: 'SUPABASE.md', desc: 'URL, headers, encoding', path: '/Users/imac/Desktop/noracode/nora-pipelines/docs/SUPABASE.md' },
+]

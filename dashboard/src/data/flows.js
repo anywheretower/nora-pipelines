@@ -1,0 +1,206 @@
+export const textToImageFlow = {
+  id: 'text2img-original',
+  title: 'Text-to-Image · Original',
+  subtitle: 'concepto 100% libre, sin imagen de referencia',
+  note: 'Bajo demanda · /nora-creatividad-original · Prompt desde cero basado en identidad de marca',
+  levels: {
+    activador: [
+      { type: 'support', text: 'imagen-concepto' },
+      { type: 'input', text: 'tabla marcas' },
+    ],
+    supabase: [
+      { type: 'gen', text: 'creatividad-original' },
+      { type: 'support', text: 'prompt-master' },
+      { type: 'step', text: 'paso 4' },
+    ],
+    comfy: [
+      { type: 'script', text: 'comfy-text2img' },
+      { type: 'step', text: 'paso 5' },
+      { type: 'step', text: 'para_revision' },
+    ],
+    qa: [
+      { type: 'qa', text: 'iteración' },
+    ],
+  },
+}
+
+export const iteracionFlow = {
+  id: 'iteracion',
+  title: 'Iteración QA',
+  subtitle: 'auto-evaluación y mejora de imágenes generadas',
+  note: 'Bajo demanda · /nora-imagen-iteracion · Score ≥4.0 pasa, <4.0 genera 2 versiones nuevas',
+  levels: {
+    activador: [
+      { type: 'input', text: 'creatividades para_revision' },
+      { type: 'input', text: 'tabla marcas' },
+    ],
+    supabase: [
+      { type: 'qa', text: 'imagen-iteracion' },
+      { type: 'support', text: 'prompt-master' },
+      { type: 'step', text: '2 nuevas paso 4' },
+    ],
+    comfy: [
+      { type: 'script', text: 'comfy-text2img' },
+      { type: 'step', text: 'paso 5' },
+      { type: 'step', text: 'para_revision' },
+    ],
+    qa: [
+      { type: 'step', text: 'evaluar de nuevo' },
+      { type: 'step', text: 'máx 3 rondas' },
+    ],
+  },
+}
+
+export const legend = [
+  { text: 'input', type: 'input', label: 'fuente datos' },
+  { text: 'soporte', type: 'support', label: 'skill apoyo' },
+  { text: 'generación', type: 'gen', label: 'skill genera' },
+  { text: 'paso N', type: 'step', label: 'estado Supabase' },
+  { text: 'script', type: 'script', label: 'ejecución GPU' },
+  { text: 'QA', type: 'qa', label: 'control calidad' },
+]
+
+export const flowDetails = {
+  'imagen-concepto': {
+    title: 'nora-imagen-concepto',
+    type: 'Skill de apoyo',
+    badge: 'Pre-generación',
+    badgeClass: 'badge-support',
+    desc: '7 motores creativos para ideación conceptual. Resuelve QUÉ imagen crear y POR QUÉ antes de construir el prompt.',
+    details: [
+      'Desplazamiento de rubro — composición de un rubro ajeno',
+      'Metáfora visual — objeto como símbolo',
+      'Tensión narrativa — contraste entre dos estados',
+      'Emoción primaria — 8 emociones publicitarias',
+      'Inversión de expectativa — lo opuesto al rubro',
+      'Analogía cross-dominio — mundos conectados',
+      'Storytelling en un frame — historia completa en una imagen',
+    ],
+  },
+  'tabla marcas': {
+    title: 'Tabla marcas (Supabase)',
+    type: 'Fuente de datos',
+    badge: 'Input',
+    badgeClass: 'badge-input',
+    desc: 'Identidad completa de cada marca. Campos clave: ficha, arquetipo, paleta_colores, look_and_feel, notas_generales, contenido_prohibido, logos.',
+  },
+  'creatividad-original': {
+    title: 'nora-creatividad-original',
+    type: 'Skill de generación',
+    badge: 'Text2Img',
+    badgeClass: 'badge-gen',
+    desc: 'Skill principal del pipeline. Lee marca → genera concepto → construye prompt 6 bloques → escribe textos (slogan, subtítulo, CTA, copy) → inserta en Supabase paso 4.',
+    details: [
+      'Paso 1: Cargar identidad de marca de Supabase',
+      'Paso 1b: Revisar creatividades anteriores (no repetir)',
+      'Paso 2: Idear concepto (7 motores creativos)',
+      'Paso 3: Construir prompt (6 bloques, 600-1500 chars, inglés)',
+      'Paso 4: Escribir textos creativos (español)',
+      'Paso 5: Insertar en Supabase con estado "paso 4"',
+      'Paso 6: Ejecutar comfy-text2img.mjs --once --id=N',
+    ],
+  },
+  'prompt-master': {
+    title: 'nora-prompt-master',
+    type: 'Guía integrada',
+    badge: 'Validación',
+    badgeClass: 'badge-support',
+    desc: 'Estructura de 6 bloques para prompts Qwen 2.5. Frases probadas, reglas de negativos, checklist de validación. Se aplica dentro de creatividad-original.',
+    details: [
+      'Bloque 1: Calidad y formato (5600K, editorial)',
+      'Bloque 2: Concepto principal (sujeto, metáfora)',
+      'Bloque 3: Composición espacial (foreground/mid/background)',
+      'Bloque 4: Interacción y narrativa',
+      'Bloque 5: Iluminación, color y efectos',
+      'Bloque 6: Negativos y restricciones',
+      'Regla crítica: Qwen NO entiende negativos',
+    ],
+  },
+  'paso 4': {
+    title: 'Estado: paso 4',
+    type: 'Estado Supabase',
+    badge: 'Estado',
+    badgeClass: 'badge-step',
+    desc: 'Creatividad con prompt listo en Supabase, esperando generación de imagen por ComfyUI. El script comfy-text2img.mjs busca registros en este estado.',
+  },
+  'comfy-text2img': {
+    title: 'comfy-text2img.mjs',
+    type: 'Script Node.js',
+    badge: 'Script',
+    badgeClass: 'badge-script',
+    desc: 'Genera imágenes 1104×1472 (3:4) vía ComfyUI remoto. Queue prompt → poll /history → download /view → upload Supabase → actualiza a paso 5.',
+    details: [
+      'ComfyUI: http://192.168.1.26:8188 (PC-2, RTX 5080)',
+      'Modelo: Qwen 2.5 VL 7B (GGUF Q4_K_M) + Lightning LoRA',
+      'Resolución: 1104×1472 (3:4)',
+      'Tiempo: ~1.5 min/imagen',
+      'Límite: máx 4 por corrida (VRAM leak)',
+      'Uso: node scripts/comfy-text2img.mjs --once --id=N',
+    ],
+  },
+  'paso 5': {
+    title: 'Estado: paso 5',
+    type: 'Estado Supabase',
+    badge: 'Estado',
+    badgeClass: 'badge-step',
+    desc: 'Imagen generada y subida a Supabase Storage. Campo link_ren_1 contiene la URL de la imagen. Creatividad lista para revisión.',
+  },
+  'para_revision': {
+    title: 'Condición: para_revision',
+    type: 'Estado Supabase',
+    badge: 'Estado',
+    badgeClass: 'badge-step',
+    desc: 'Creatividad con imagen generada, lista para QA automático (iteración) o revisión humana (Jorge). Se asigna automáticamente al completar la generación.',
+  },
+  'iteración': {
+    title: 'nora-imagen-iteracion',
+    type: 'Skill QA',
+    badge: 'QA Auto',
+    badgeClass: 'badge-qa',
+    desc: 'Auto-evaluación contra 3 dimensiones: calidad técnica, coherencia de marca, impacto publicitario. Score ≥4.0 pasa, <4.0 genera 2 versiones nuevas con prompts ajustados.',
+    details: [
+      'Dim A: Calidad técnica (anatomía, artefactos, espacio negativo, fondo)',
+      'Dim B: Coherencia de marca (paleta, registro, prohibido, tono)',
+      'Dim C: Impacto publicitario (stopping power, claridad, tensión, memorabilidad)',
+      'Score ≥ 4.0 → PASA (tags de trazabilidad)',
+      'Score < 4.0 → 2 versiones nuevas en paso 4',
+      'Original → condicion: iteracion_resuelta',
+      'Máximo 3 rondas (iterado_r1, r2, r3)',
+    ],
+  },
+  'creatividades para_revision': {
+    title: 'Creatividades para_revision',
+    type: 'Fuente de datos',
+    badge: 'Input',
+    badgeClass: 'badge-input',
+    desc: 'Creatividades con condicion=para_revision en Supabase. Candidatas para evaluación automática por el skill de iteración.',
+  },
+  'imagen-iteracion': {
+    title: 'nora-imagen-iteracion',
+    type: 'Skill QA',
+    badge: 'QA Auto',
+    badgeClass: 'badge-qa',
+    desc: 'Evalúa imagen, decide si pasa (score ≥4.0) o itera (genera 2 versiones nuevas con prompts ajustados). Máx 3 rondas.',
+  },
+  '2 nuevas paso 4': {
+    title: '2 nuevas creatividades',
+    type: 'Estado Supabase',
+    badge: 'Estado',
+    badgeClass: 'badge-step',
+    desc: 'Si la imagen no pasa QA, se crean 2 nuevas creatividades con enfoques distintos (versión A y B), ambas en estado paso 4 para regenerar.',
+  },
+  'evaluar de nuevo': {
+    title: 'Re-evaluación',
+    type: 'Loop',
+    badge: 'QA',
+    badgeClass: 'badge-qa',
+    desc: 'Después de generar las nuevas imágenes, el skill de iteración las evalúa de nuevo. El loop continúa hasta score ≥4.0 o agotar 3 rondas.',
+  },
+  'máx 3 rondas': {
+    title: 'Límite de rondas',
+    type: 'Regla',
+    badge: 'Límite',
+    badgeClass: 'badge-qa',
+    desc: 'Máximo 3 rondas de iteración (iterado_r1 → r2 → r3). En ronda 3 la creatividad pasa a revisión humana aunque no cumpla score.',
+  },
+}

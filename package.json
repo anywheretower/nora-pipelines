@@ -1,0 +1,12 @@
+{
+  "name": "nora-pipelines",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "NORA pipeline scripts for ComfyUI image generation",
+  "scripts": {
+    "text2img": "node scripts/comfy-text2img.mjs --once",
+    "text2img:id": "node scripts/comfy-text2img.mjs --once --id",
+    "postprod-ugc": "node scripts/postprod-ugc.mjs",
+    "upscale-ugc": "node scripts/upscale-ugc.mjs"
+  }
+}
