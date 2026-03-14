@@ -945,7 +945,7 @@ export const pipelines = [
             description: 'Genera WAV 44100Hz mono via API. Sube a Supabase Storage. El script añade 1s de silencio al final automáticamente.',
             details: [
               'Modelo: sonic-3',
-              'Voces: Tono Mo (hombre) / Karla K (mujer)',
+              'Voces: 6 voces chilenas — Joven: Oliver/Alanys · Adulto: Tono Mo/Karla K · Adulto Mayor: Héctor/Gabriela',
               'Speed: 0.9-1.05 según marca',
               'Formato: WAV 44100Hz mono',
               'Silencio final: +1s automático (ffmpeg apad) — transición a pack de cierre',
