@@ -10,7 +10,7 @@ export const skills = [
       { icon: '⚡', label: 'Activa', value: 'bajo demanda — /nora-creatividad-original' },
       { icon: '📤', label: 'Entrega', value: 'creatividad en paso 4 + imagen generada vía ComfyUI' },
       { icon: '🔧', label: 'Script', value: 'comfy-text2img.mjs --once --id=N' },
-      { icon: '📋', label: 'Escribe', value: 'creatividades — prompt, concepto, copy, slogan_headline, subtitulo, cta, logo, origen, estado, + campos estrategia' },
+      { icon: '📋', label: 'Escribe', value: 'creatividades — prompt, concepto, copy, slogan_headline, subtitulo, cta, origen, estado, + campos estrategia' },
     ],
     rev: 'Rev: 2026-03-12',
     deps: '← imagen-concepto + prompt-master (integrados)',

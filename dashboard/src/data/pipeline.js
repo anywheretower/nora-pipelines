@@ -227,7 +227,7 @@ export const pipelines = [
               insert: [
                 'marca', 'estado → para_ejecucion', 'origen → original', 'condicion → null',
                 'prompt', 'concepto', 'slogan_headline', 'subtitulo', 'cta', 'copy', 'descripcion_corta',
-                'logo', 'gatillador',
+                'gatillador',
                 'buyer_persona', 'dolor_anhelo', 'cambio_emocional', 'diferenciador', 'beneficios', 'objeciones_tipicas',
               ],
             },
@@ -292,7 +292,7 @@ export const pipelines = [
             resource: { type: 'supabase', name: 'INSERT creatividades', op: 'INSERT' },
             description: '18 campos en 3 grupos. La creatividad queda lista para que ComfyUI la procese.',
             details: [
-              'Técnicos: marca, estado, origen, prompt, gatillador, logo',
+              'Técnicos: marca, estado, origen, prompt, gatillador',
               'Textos: concepto, slogan_headline, subtitulo, cta, copy, descripcion_corta',
               'Estrategia: buyer_persona, dolor_anhelo, cambio_emocional, diferenciador, beneficios, objeciones_tipicas',
             ],
@@ -610,14 +610,14 @@ export const pipelines = [
         title: 'Creatividad creada desde NORA',
         executor: 'nora',
         stateIn: null,
-        stateOut: 'para_ejecucion + condicion:requerido',
-        description: 'En NORA, el usuario sube un input (foto de producto/colaborador/espacio) y presiona "Sorpréndeme NORA". Esto crea una creatividad en Supabase con estado=para_ejecucion, condicion=requerido, origen según categoría, url con la foto, y campos básicos del input. La creatividad queda SIN prompt — esperando que el skill lo genere.',
+        stateOut: 'para_procesamiento',
+        description: 'En NORA, el usuario sube un input (foto de producto/colaborador/espacio) y presiona "Sorpréndeme NORA". Esto crea una creatividad en Supabase con estado=para_procesamiento, condicion=requerido, origen según categoría, url con la foto, y campos básicos del input. La creatividad queda SIN prompt — esperando que el skill lo genere.',
         supabaseFields: {
           reads: {},
           writes: {
             creatividades: {
               insert: [
-                'marca', 'estado → para_ejecucion', 'condicion → requerido',
+                'marca', 'estado → para_procesamiento', 'condicion → requerido',
                 'origen → Producto/Colaborador/Interior/Exterior/Fachada',
                 'url → foto de referencia',
                 'slogan_headline', 'subtitulo', 'cta', 'concepto',
@@ -642,20 +642,20 @@ export const pipelines = [
             resource: { type: 'supabase', name: 'INSERT creatividades', op: 'INSERT' },
             description: 'NORA crea la creatividad directamente en Supabase con los datos del input.',
             details: [
-              'estado → para_ejecucion',
+              'estado → para_procesamiento',
               'condicion → requerido',
               'origen → categoría del input (Producto, Colaborador, etc)',
               'url → foto de referencia',
               'titulo, subtitulo, cta, concepto → del input',
               'prompt → NULL (lo genera el skill)',
             ],
-            stateChange: 'NULL → para_ejecucion (condicion: requerido)',
+            stateChange: 'NULL → para_procesamiento (condicion: requerido)',
           },
           {
             label: 'Skill detecta pendientes',
             resource: { type: 'skill', name: 'nora-creatividad-img2img' },
-            description: 'El skill se invoca manualmente o por cron. Busca creatividades con estado=para_ejecucion, condicion=requerido, origen img2img y sin prompt.',
-            filter: 'estado = para_ejecucion AND condicion = requerido AND origen IN (Producto, Colaborador, Interior, Exterior, Fachada) AND prompt IS NULL',
+            description: 'El skill se invoca manualmente o por cron. Busca creatividades con estado=para_procesamiento, origen img2img y sin prompt.',
+            filter: 'estado = para_procesamiento AND origen IN (Producto, Colaborador, Interior, Exterior, Fachada) AND prompt IS NULL',
           },
         ],
       },
@@ -664,7 +664,7 @@ export const pipelines = [
         title: 'Identidad de marca + foto original',
         executor: 'skill',
         executorDetail: 'nora-creatividad-img2img',
-        stateIn: null,
+        stateIn: 'para_procesamiento',
         stateOut: null,
         description: 'Se lee la ficha de marca, la foto de referencia y datos del producto (si aplica).',
         supabaseFields: {
@@ -707,10 +707,10 @@ export const pipelines = [
       },
 
       procesamiento: {
-        title: 'Prompt de edición + Textos + INSERT',
+        title: 'Prompt de edición + Textos + UPDATE',
         executor: 'skill',
         executorDetail: 'nora-creatividad-img2img',
-        stateIn: null,
+        stateIn: 'para_procesamiento',
         stateOut: 'para_ejecucion',
         description: 'Construye prompt de edición (800-1100 chars), escribe textos, extrae estrategia y actualiza la creatividad existente en Supabase.',
         supabaseFields: {
@@ -719,8 +719,9 @@ export const pipelines = [
             creatividades: {
               update: [
                 'prompt → instrucción de edición en inglés (800-1100 chars)',
-                'copy', 'descripcion_corta', 'logo',
+                'copy', 'descripcion_corta',
                 'buyer_persona', 'dolor_anhelo', 'cambio_emocional', 'diferenciador', 'beneficios', 'objeciones_tipicas',
+                'estado → para_ejecucion (transición desde para_procesamiento)',
                 'condicion → null (limpia "requerido")',
               ],
             },
@@ -758,14 +759,14 @@ export const pipelines = [
           {
             label: 'Actualizar creatividad (UPDATE)',
             resource: { type: 'supabase', name: 'UPDATE creatividades', op: 'UPDATE' },
-            description: 'La creatividad ya existe (creada desde NORA). Se actualiza con prompt, copy, campos de estrategia y se limpia condicion.',
+            description: 'La creatividad ya existe (creada desde NORA). Se actualiza con prompt, copy, campos de estrategia, se cambia estado a para_ejecucion y se limpia condicion.',
             details: [
               'prompt → instrucción de edición en inglés (800-1100 chars)',
               'copy, descripcion_corta, campos de estrategia',
-              'logo → de marcas.logos',
-              'condicion → null (limpia "requerido" para que el script la recoja)',
+              'estado → para_ejecucion',
+              'condicion → null (limpia "requerido")',
             ],
-            stateChange: 'condicion: requerido → null',
+            stateChange: 'para_procesamiento → para_ejecucion',
           },
         ],
       },
