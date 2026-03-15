@@ -939,7 +939,7 @@ export const pipelines = [
   {
     id: 'img2img',
     title: 'Image-to-Image · Edición',
-    subtitle: 'Edición de foto existente — producto, colaborador, espacio',
+    subtitle: 'Producto · Colaborador · Interior · Exterior · Fachada',
     command: '/nora-creatividad-img2img',
     status: 'activo',
 

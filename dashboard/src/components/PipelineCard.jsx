@@ -426,7 +426,7 @@ function DetailPanel({ data }) {
 /* ── Main component ── */
 
 export default function PipelineCard({ pipeline, universalPhases, activePhase, onPhaseClick }) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const [qaEnabled, setQaEnabled] = useState(true)
 
   const activeData = activePhase ? pipeline.phases[activePhase] : null
