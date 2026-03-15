@@ -3,9 +3,10 @@
  * Genera video vía ComfyUI remoto (PC-2), merge audio, sube a Supabase Storage.
  * Guarda latent intermedio para futuro upscale (SaveLatent node).
  *
- * Uso: node comfy-t2v-ugc.mjs [--once] [--id=123]
+ * Uso: node comfy-t2v-ugc.mjs [--once] [--id=123] [--max=1]
  *   --once    Procesa lo pendiente y sale (no hace polling)
  *   --id=123  Procesa solo esa creatividad
+ *   --max=N   Máximo N videos por corrida (default: 1, por VRAM leak con LTX)
  *
  * La creatividad debe tener:
  *   - prompt: texto para LTX-Video 2.3
@@ -54,6 +55,8 @@ const args = process.argv.slice(2);
 const once = args.includes('--once');
 const idArg = args.find(a => a.startsWith('--id='));
 const onlyId = idArg ? parseInt(idArg.split('=')[1]) : null;
+const maxArg = args.find(a => a.startsWith('--max='));
+const MAX_PER_RUN = maxArg ? parseInt(maxArg.split('=')[1]) : 1; // VRAM leak safety — LTX needs restart after each
 
 function log(msg) {
   const ts = new Date().toLocaleTimeString('es-CL', { hour12: false });
@@ -140,14 +143,35 @@ function buildWorkflow(prompt, audioFilename, seed, duration, id) {
 // =============================================================
 
 async function getPendingCreatividades() {
-  let url = `${SUPA}/rest/v1/creatividades?estado=eq.para_ejecucion&origen=eq.video&select=id,prompt,marca,url,concepto&order=id.asc`;
+  let url = `${SUPA}/rest/v1/creatividades?estado=eq.para_ejecucion&origen=eq.video&prompt=not.is.null&url=not.is.null&select=id,prompt,marca,url,concepto&order=id.asc`;
   if (onlyId) {
-    url = `${SUPA}/rest/v1/creatividades?id=eq.${onlyId}&select=id,prompt,marca,url,concepto`;
+    url = `${SUPA}/rest/v1/creatividades?id=eq.${onlyId}&origen=eq.video&select=id,prompt,marca,url,concepto`;
   }
   const r = await fetch(url, { headers: { 'Authorization': `Bearer ${KEY}`, 'apikey': KEY } });
   const data = await r.json();
-  // Must have prompt and audio URL (stored in `url` field)
   return data.filter(c => c.prompt && c.prompt.trim().length > 0 && c.url && c.url.trim().length > 0);
+}
+
+async function markAsProcessing(id) {
+  const r = await fetch(`${SUPA}/rest/v1/creatividades?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: supaHeaders,
+    body: JSON.stringify({ estado: 'en_proceso' })
+  });
+  if (r.status !== 204) throw new Error(`Mark en_proceso failed: ${r.status}`);
+}
+
+async function markAsError(id, errorMsg) {
+  try {
+    await fetch(`${SUPA}/rest/v1/creatividades?id=eq.${id}`, {
+      method: 'PATCH',
+      headers: supaHeaders,
+      body: JSON.stringify({
+        estado: 'error',
+        observacion: `[auto] ${errorMsg.substring(0, 500)}`
+      })
+    });
+  } catch { /* best effort */ }
 }
 
 async function updateCreatividad(id, videoUrl) {
@@ -326,7 +350,7 @@ function mergeAudio(videoBuffer, audioBuffer) {
 
 async function uploadToSupabase(videoBuffer, marca) {
   const safeMarca = marca.toLowerCase().replace(/[^a-z0-9]/g, '_');
-  const name = `creatividades/${safeMarca}_ugc_${Date.now()}.mp4`;
+  const name = `${safeMarca}_ugc_${Date.now()}.mp4`;
   const r = await fetch(`${SUPA}/storage/v1/object/creatividades/${name}`, {
     method: 'POST',
     headers: {
@@ -351,6 +375,9 @@ async function uploadToSupabase(videoBuffer, marca) {
 async function processOne(creatividad) {
   const { id, prompt, marca, url: audioUrl } = creatividad;
   log(`▶ #${id} [${marca}] — Generando video UGC...`);
+
+  // 0. Mark as processing to prevent duplicate pickup
+  await markAsProcessing(id);
 
   // 1. Download audio from Supabase
   const rawAudio = await downloadAudio(audioUrl);
@@ -459,10 +486,17 @@ async function run() {
       await processOne(c);
     } catch (e) {
       log(`❌ #${c.id} Error: ${e.message}`);
+      await markAsError(c.id, e.message);
+      log(`  ⚠️ #${c.id} → estado=error`);
       stats.fail++;
     }
 
-    // Max 1 video per run (VRAM leak with LTX)
+    // Límite por corrida (VRAM leak con LTX)
+    if (stats.ok + stats.fail >= MAX_PER_RUN) {
+      log(`🛑 Límite de ${MAX_PER_RUN} video(s) por corrida alcanzado.`);
+      break;
+    }
+
     if (onlyId || once) break;
 
     // Pausa entre videos

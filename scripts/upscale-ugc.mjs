@@ -326,7 +326,7 @@ function resizeAndMergeAudio(inputBuffer, audioBuffer) {
 
 async function uploadToSupabase(videoBuffer, marca) {
   const safeMarca = marca.toLowerCase().replace(/[^a-z0-9]/g, '_');
-  const name = `creatividades/${safeMarca}_ugc_upscaled_${Date.now()}.mp4`;
+  const name = `${safeMarca}_ugc_upscaled_${Date.now()}.mp4`;
   const r = await fetch(`${SUPA}/storage/v1/object/creatividades/${name}`, {
     method: 'POST',
     headers: {

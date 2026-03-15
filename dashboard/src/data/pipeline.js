@@ -1016,6 +1016,7 @@ export const pipelines = [
         stateIn: null,
         stateOut: null,
         description: 'El usuario invoca /nora-video-ugc indicando la marca. Se cargan las variables de entorno.',
+        supabaseFields: { reads: {}, writes: {} },
         steps: [
           {
             label: 'Instrucción del usuario',
@@ -1049,6 +1050,12 @@ export const pipelines = [
         stateIn: null,
         stateOut: null,
         description: 'Se lee la ficha completa de la marca para generar un concepto y libreto coherentes.',
+        supabaseFields: {
+          reads: {
+            marcas: ['ficha', 'arquetipo', 'buyer_persona', 'notas_generales', 'contenido_prohibido'],
+          },
+          writes: {},
+        },
         steps: [
           {
             label: 'Leer identidad de marca',
@@ -1073,6 +1080,19 @@ export const pipelines = [
         stateIn: null,
         stateOut: 'para_ejecucion',
         description: '5 sub-pasos: concepto UGC, libreto (~15-20 palabras), voz Cartesia TTS (WAV), prompt LTX, INSERT creatividad.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: ['{marca}_ugc_audio_{timestamp}.wav → bucket creatividades (audio Cartesia)'],
+            creatividades: {
+              insert: [
+                'marca', 'estado → para_ejecucion', 'origen → video', 'condicion → null',
+                'prompt → texto LTX en inglés', 'url → audio WAV en Storage',
+                'concepto', 'slogan_headline', 'copy',
+              ],
+            },
+          },
+        },
         steps: [
           {
             label: 'Concepto UGC',
@@ -1136,7 +1156,19 @@ export const pipelines = [
         executorDetail: 'comfy-t2v-ugc.mjs',
         stateIn: 'para_ejecucion',
         stateOut: null,
-        description: 'El script descarga el audio, lo sube a ComfyUI, envía el workflow LTX 2.3 (~20 nodos), espera el video, guarda latent y lo descarga.',
+        description: 'El script marca en_proceso, descarga el audio, lo sube a ComfyUI, envía el workflow LTX 2.3 (~20 nodos), espera el video, guarda latent y lo descarga. Si falla, marca como error.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'prompt', 'marca', 'url', 'concepto'],
+          },
+          writes: {
+            creatividades: {
+              update_on_pickup: ['estado → en_proceso'],
+              update_on_error: ['estado → error', 'observacion → [auto] mensaje de error'],
+            },
+          },
+          filters: ['estado = para_ejecucion', 'origen = video', 'prompt NOT NULL', 'url NOT NULL'],
+        },
         steps: [
           {
             label: 'Descargar audio + pad silencio',
@@ -1192,6 +1224,15 @@ export const pipelines = [
         stateIn: 'para_ejecucion',
         stateOut: 'base_lista',
         description: 'El video base (576×1024) con audio se sube a Supabase Storage y se actualiza la creatividad.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: ['{marca}_ugc_{timestamp}.mp4 → bucket creatividades'],
+            creatividades: {
+              update: ['link_ren_2 → URL pública video base con audio', 'estado → base_lista', 'condicion → para_revision'],
+            },
+          },
+        },
         steps: [
           {
             label: 'Subir video base a Storage',
@@ -1220,6 +1261,17 @@ export const pipelines = [
         stateIn: 'base_lista + aprobado',
         stateOut: 'base_lista (video reemplazado)',
         description: 'Tras aprobación humana del video base: spatial upscaler x2 en latent space + refine 3 steps. Output: 1080×1920.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'url', 'link_ren_2'],
+          },
+          writes: {
+            storage: ['{marca}_ugc_upscaled_{timestamp}.mp4 → bucket creatividades'],
+            creatividades: {
+              update: ['link_ren_2 → URL video upscaleado 1080×1920 con audio'],
+            },
+          },
+        },
         steps: [
           {
             label: 'Copiar latent a ComfyUI/input',
@@ -1263,6 +1315,13 @@ export const pipelines = [
         stateIn: 'aprobado',
         stateOut: null,
         description: 'Tras aprobación humana: transcribir audio (Whisper CUDA), render Remotion dual (9:16 + 4:5) con subtítulos karaoke y pack de cierre.',
+        manual: true,
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'link_ren_2', 'url', 'prompt', 'concepto', 'copy', 'slogan_headline'],
+          },
+          writes: {},
+        },
         steps: [
           {
             label: 'Descargar video + audio',
@@ -1321,6 +1380,22 @@ export const pipelines = [
         stateIn: null,
         stateOut: 'ejecutado',
         description: 'Sube ambos videos a Supabase Storage y crea creatividad nueva con link_ren_1 (4:5) y link_ren_2 (9:16).',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: [
+              '{marca}_ugc_{ts}_916.mp4 → bucket creatividades (9:16 stories)',
+              '{marca}_ugc_{ts}_45.mp4 → bucket creatividades (4:5 feed)',
+            ],
+            creatividades: {
+              insert: [
+                'marca', 'estado → ejecutado', 'origen → video', 'condicion → para_revision',
+                'link_ren_1 → video 4:5 (feed)', 'link_ren_2 → video 9:16 (stories)',
+                'prompt, concepto, copy, slogan_headline → heredados de creatividad base',
+              ],
+            },
+          },
+        },
         steps: [
           {
             label: 'Descargar renders de PC-2',
