@@ -1329,7 +1329,256 @@ export const pipelines = [
   },
 
   // ============================================================
-  // Pipeline 3: Text-to-Video UGC (LTX-Video 2 + Cartesia TTS)
+  // Pipeline 4: Pantalla · Imagen (16:9 para TVs)
+  // ============================================================
+  {
+    id: 'pantalla-imagen',
+    title: 'Pantalla · Imagen',
+    subtitle: '16:9 para TVs en salas de espera — recicla creatividades aprobadas',
+    command: '/nora-creatividad-pantalla',
+    status: 'activo',
+
+    executionBlocks: [
+      {
+        executor: 'skill',
+        label: 'Skill: nora-creatividad-pantalla',
+        phases: ['activador', 'lectura', 'procesamiento'],
+        handoff: 'ejecuta script via Bash',
+      },
+      {
+        executor: 'script',
+        label: 'Script: comfy-text2img.mjs --res=1920x1080',
+        phases: ['ejecucion', 'entrega'],
+        handoff: 'creatividad para_revision',
+      },
+      {
+        executor: 'skill',
+        label: 'QA Humano: nora-imagen-observacion',
+        phases: ['observacion'],
+        optional: true,
+        handoff: null,
+      },
+    ],
+
+    phases: {
+      activador: {
+        title: 'Creatividad aprobada → versión 16:9',
+        executor: 'skill',
+        stateIn: null,
+        stateOut: null,
+        description: 'Se activa cuando hay creatividades text2img aprobadas que necesitan versión horizontal para pantallas/TVs. El skill duplica la creatividad adaptando el prompt a composición 16:9.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Detectar creatividades aprobadas',
+            resource: { type: 'skill', name: 'nora-creatividad-pantalla' },
+            description: 'Busca creatividades t2i aprobadas que no tengan versión pantalla aún, o procesa pedidos directos.',
+          },
+        ],
+      },
+
+      lectura: {
+        title: 'Creatividad origen + marca',
+        executor: 'skill',
+        executorDetail: 'nora-creatividad-pantalla',
+        stateIn: null,
+        stateOut: null,
+        description: 'Lee la creatividad origen aprobada (prompt, concepto, textos) y la ficha de marca para adaptar la composición.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'prompt', 'marca', 'concepto', 'slogan_headline', 'subtitulo', 'cta', 'copy', 'gatillador'],
+            marcas: ['paleta_colores', 'look_and_feel', 'notas_generales', 'contenido_prohibido'],
+          },
+          writes: {},
+        },
+        steps: [
+          {
+            label: 'Leer creatividad origen',
+            resource: { type: 'supabase', name: 'READ creatividades', op: 'READ' },
+            description: 'La creatividad t2i aprobada con su prompt original en composición 3:4.',
+          },
+          {
+            label: 'Leer identidad de marca',
+            resource: { type: 'supabase', name: 'READ marcas', op: 'READ' },
+            description: 'Paleta, look & feel, notas y restricciones para mantener coherencia en la adaptación.',
+            filter: 'marca = {marca}',
+          },
+        ],
+      },
+
+      procesamiento: {
+        title: 'Adaptar prompt a 16:9 + INSERT',
+        executor: 'skill',
+        executorDetail: 'nora-creatividad-pantalla',
+        stateIn: null,
+        stateOut: 'para_ejecucion',
+        description: 'Adapta el prompt de composición vertical (3:4) a horizontal (16:9): redistribuye elementos, aprovecha el ancho, mantiene espacio para texto. Inserta como nueva creatividad con origen=pantalla.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            creatividades: {
+              insert: [
+                'marca', 'estado → para_ejecucion', 'origen → pantalla', 'condicion → null',
+                'prompt → adaptado a composición 16:9 horizontal',
+                'gatillador → "Pantalla 16:9 desde creatividad #N"',
+                'concepto', 'slogan_headline', 'subtitulo', 'cta', 'copy', 'descripcion_corta',
+              ],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Adaptar prompt a composición horizontal',
+            resource: { type: 'skill', name: 'nora-creatividad-pantalla' },
+            description: 'Reescribe el prompt para formato 16:9: redistribuir elementos horizontalmente, aprovechar ancho extra, mantener esencia visual.',
+            details: [
+              'Cambiar composición vertical → horizontal (landscape/wide)',
+              'Redistribuir foreground/midground/background para el ancho',
+              'Mantener espacio para texto adaptado al formato horizontal',
+              'Misma paleta, misma atmósfera, mismo concepto',
+              'Validar contra prompt-master (6 bloques, checklist)',
+            ],
+          },
+          {
+            label: 'Insertar creatividad pantalla',
+            resource: { type: 'supabase', name: 'INSERT creatividades', op: 'INSERT' },
+            description: 'Nueva creatividad con origen=pantalla, prompt adaptado a 16:9. Hereda textos de la creatividad origen.',
+            stateChange: 'NULL → para_ejecucion',
+          },
+        ],
+      },
+
+      ejecucion: {
+        title: 'ComfyUI remoto — 1920×1080',
+        executor: 'script',
+        executorDetail: 'comfy-text2img.mjs --res=1920x1080',
+        stateIn: 'para_ejecucion',
+        stateOut: null,
+        description: 'Mismo script comfy-text2img.mjs con --res=1920x1080. Marca en_proceso, envía workflow con resolución 16:9, espera y descarga.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'prompt', 'marca'],
+          },
+          writes: {
+            creatividades: {
+              update_on_pickup: ['estado → en_proceso'],
+              update_on_error: ['estado → error', 'observacion → [auto] mensaje de error'],
+            },
+          },
+          filters: ['estado = para_ejecucion', 'origen = pantalla'],
+        },
+        steps: [
+          {
+            label: 'Leer creatividad pendiente',
+            resource: { type: 'supabase', name: 'READ creatividades', op: 'READ' },
+            description: 'Query con estado para_ejecucion y origen pantalla.',
+            filter: 'estado = para_ejecucion AND origen = pantalla',
+          },
+          {
+            label: 'Enviar workflow a ComfyUI (16:9)',
+            resource: { type: 'script', name: 'comfy-text2img.mjs --res=1920x1080 → POST /prompt' },
+            description: 'Mismo workflow Qwen pero con resolución 1920×1080 (16:9).',
+            details: [
+              'Modelo: Qwen 2.5 VL 7B (GGUF Q4_K_M)',
+              'LoRA: Lightning 4-steps V1.0',
+              'Sampler: euler, scheduler: simple, steps: 15, cfg: 1.5',
+              'Resolución: 1920×1080 (16:9)',
+            ],
+          },
+          {
+            label: 'Esperar generación',
+            resource: { type: 'script', name: 'comfy-text2img.mjs → poll /history' },
+            description: 'Polling cada 3s hasta que aparezca el output.',
+          },
+          {
+            label: 'Descargar imagen',
+            resource: { type: 'script', name: 'comfy-text2img.mjs → GET /view' },
+            description: 'Descarga la imagen 1920×1080 como buffer.',
+          },
+        ],
+        meta: [
+          { icon: '⚙️', label: 'Hardware', value: 'PC-2: RTX 5080 16GB, 192.168.1.26:8188' },
+          { icon: '⏱️', label: 'Tiempo', value: '~3 min/imagen (16:9 más píxeles)' },
+          { icon: '📐', label: 'Resolución', value: '1920×1080 (16:9)' },
+        ],
+      },
+
+      entrega: {
+        title: 'Upload Storage + actualizar creatividad',
+        executor: 'script',
+        executorDetail: 'comfy-text2img.mjs',
+        stateIn: 'para_ejecucion',
+        stateOut: 'ejecutado',
+        description: 'La imagen 16:9 se sube a Supabase Storage y se actualiza la creatividad.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: ['{marca}_t2i_{timestamp}.png → bucket creatividades'],
+            creatividades: {
+              update: ['link_ren_1 → URL pública imagen 16:9', 'estado → ejecutado', 'condicion → para_revision'],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Subir imagen a Storage',
+            resource: { type: 'supabase', name: 'INSERT storage', op: 'INSERT' },
+            description: 'Upload al bucket "creatividades".',
+            details: ['Nombre: {marca}_t2i_{timestamp}.png'],
+          },
+          {
+            label: 'Actualizar creatividad',
+            resource: { type: 'supabase', name: 'UPDATE creatividades', op: 'UPDATE' },
+            description: 'Registra la URL y cambia el estado.',
+            stateChange: 'para_ejecucion → ejecutado',
+          },
+        ],
+      },
+
+      observacion: {
+        title: 'Observación humana → corrección',
+        executor: 'skill',
+        executorDetail: 'nora-imagen-observacion',
+        optional: true,
+        manual: true,
+        stateIn: 'observado',
+        stateOut: 'para_ejecucion (nuevas) / para_revision (solo textos)',
+        description: 'Jorge revisa en NORA y deja observación si necesita ajustes. NO sujeta a iteración automática — solo observaciones manuales.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'prompt', 'concepto', 'observacion', 'condicion', 'link_ren_1'],
+            marcas: ['paleta_colores', 'look_and_feel', 'contenido_prohibido'],
+          },
+          writes: {
+            creatividades: {
+              update_textos: ['condicion → para_revision'],
+              insert_imagen: ['nuevas creatividades con prompt corregido, estado → para_ejecucion'],
+            },
+          },
+          filters: ['observacion NOT NULL', 'condicion = observado', 'origen = pantalla'],
+        },
+        steps: [
+          {
+            label: 'Detectar + interpretar observación',
+            resource: { type: 'skill', name: 'nora-imagen-observacion' },
+            description: 'Clasifica tipo de cambio y actúa.',
+          },
+          {
+            label: 'Corregir según observación',
+            resource: { type: 'supabase', name: 'INSERT/UPDATE creatividades', op: 'INSERT' },
+            description: 'Duplica con prompt corregido o edita textos directo.',
+          },
+        ],
+        meta: [
+          { icon: '👁️', label: 'Trigger', value: 'Jorge deja observación en NORA → condicion=observado' },
+          { icon: '⚠️', label: 'Sin QA auto', value: 'Pantalla NO pasa por iteración automática' },
+        ],
+      },
+    },
+  },
+
+  // ============================================================
+  // Pipeline 5: Text-to-Video UGC (LTX-Video 2 + Cartesia TTS)
   // ============================================================
   {
     id: 'text2video-ugc',

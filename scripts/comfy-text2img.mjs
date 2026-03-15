@@ -1,11 +1,13 @@
 /**
- * NORA — Texto a Imagen 3:4
+ * NORA — Texto a Imagen (text2img)
  * Genera imagen vía ComfyUI remoto (PC-2), sube a Supabase Storage, actualiza registro.
+ * Soporta 3:4 (default para original/referencia) y 16:9 (para pantalla).
  *
- * Uso: node comfy-text2img.mjs [--once] [--id=123] [--max=4]
- *   --once    Procesa lo pendiente y sale (no hace polling)
- *   --id=123  Procesa solo esa creatividad
- *   --max=N   Máximo N imágenes por corrida (default: 4, por VRAM leak)
+ * Uso: node comfy-text2img.mjs [--once] [--id=123] [--max=4] [--res=1920x1080]
+ *   --once       Procesa lo pendiente y sale (no hace polling)
+ *   --id=123     Procesa solo esa creatividad
+ *   --max=N      Máximo N imágenes por corrida (default: 4, por VRAM leak)
+ *   --res=WxH    Resolución (default: 1104x1472 para 3:4)
  */
 
 // --- Load .env from project root ---
@@ -49,6 +51,8 @@ const idArg = args.find(a => a.startsWith('--id='));
 const onlyId = idArg ? parseInt(idArg.split('=')[1]) : null;
 const maxArg = args.find(a => a.startsWith('--max='));
 const MAX_PER_RUN = maxArg ? parseInt(maxArg.split('=')[1]) : 4; // VRAM leak safety
+const resArg = args.find(a => a.startsWith('--res='));
+const [IMG_W, IMG_H] = resArg ? resArg.split('=')[1].split('x').map(Number) : [1104, 1472];
 
 function log(msg) {
   const ts = new Date().toLocaleTimeString('es-CL', { hour12: false });
@@ -97,8 +101,8 @@ function buildWorkflow(prompt, seed) {
         inputs: { clip_name: "qwen_2.5_vl_7b_fp8_scaled.safetensors", type: "qwen_image", device: "default" },
         class_type: "CLIPLoader"
       },
-      "238": { inputs: { value: 1104 }, class_type: "INTConstant" },
-      "239": { inputs: { value: 1472 }, class_type: "INTConstant" },
+      "238": { inputs: { value: IMG_W }, class_type: "INTConstant" },
+      "239": { inputs: { value: IMG_H }, class_type: "INTConstant" },
       "263": {
         inputs: { width: ["238", 0], height: ["239", 0], batch_size: 1 },
         class_type: "EmptyLatentImage"
@@ -135,9 +139,9 @@ function buildWorkflow(prompt, seed) {
 }
 
 async function getPendingCreatividades() {
-  let url = `${SUPA}/rest/v1/creatividades?estado=eq.para_ejecucion&origen=in.(original,referencia)&select=id,prompt,marca&order=id.asc`;
+  let url = `${SUPA}/rest/v1/creatividades?estado=eq.para_ejecucion&origen=in.(original,referencia,pantalla)&select=id,prompt,marca&order=id.asc`;
   if (onlyId) {
-    url = `${SUPA}/rest/v1/creatividades?id=eq.${onlyId}&origen=in.(original,referencia)&select=id,prompt,marca`;
+    url = `${SUPA}/rest/v1/creatividades?id=eq.${onlyId}&origen=in.(original,referencia,pantalla)&select=id,prompt,marca`;
   }
   const r = await fetch(url, { headers: { 'Authorization': `Bearer ${KEY}`, 'apikey': KEY } });
   const data = await r.json();
