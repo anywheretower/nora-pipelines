@@ -720,7 +720,6 @@ export const pipelines = [
               update: [
                 'prompt → instrucción de edición en inglés (800-1100 chars)',
                 'copy', 'descripcion_corta',
-                'buyer_persona', 'dolor_anhelo', 'cambio_emocional', 'diferenciador', 'beneficios', 'objeciones_tipicas',
                 'estado → para_ejecucion (transición desde para_procesamiento)',
                 'condicion → null (limpia "requerido")',
               ],
@@ -752,17 +751,12 @@ export const pipelines = [
             ],
           },
           {
-            label: 'Campos de estrategia',
-            resource: { type: 'doc', name: 'Ficha de marca' },
-            description: 'Se procesan desde la ficha leída: buyer_persona, dolor_anhelo, cambio_emocional, etc.',
-          },
-          {
             label: 'Actualizar creatividad (UPDATE)',
             resource: { type: 'supabase', name: 'UPDATE creatividades', op: 'UPDATE' },
-            description: 'La creatividad ya existe (creada desde NORA). Se actualiza con prompt, copy, campos de estrategia, se cambia estado a para_ejecucion y se limpia condicion.',
+            description: 'La creatividad ya existe (creada desde NORA). Se actualiza con prompt, copy, se cambia estado a para_ejecucion y se limpia condicion.',
             details: [
               'prompt → instrucción de edición en inglés (800-1100 chars)',
-              'copy, descripcion_corta, campos de estrategia',
+              'copy, descripcion_corta',
               'estado → para_ejecucion',
               'condicion → null (limpia "requerido")',
             ],
