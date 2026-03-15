@@ -177,6 +177,13 @@ export const pipelines = [
         stateIn: null,
         stateOut: null,
         description: 'Se hacen 2 queries a Supabase: ficha completa de la marca y todas las creatividades validadas (solo origen referencia y original) para evitar repetir.',
+        supabaseFields: {
+          reads: {
+            marcas: ['ficha', 'arquetipo', 'paleta_colores', 'look_and_feel', 'notas_generales', 'contenido_prohibido', 'logos'],
+            creatividades: ['id', 'concepto', 'slogan_headline', 'subtitulo', 'cta', 'copy', 'prompt', 'origen'],
+          },
+          writes: {},
+        },
         steps: [
           {
             label: 'Leer identidad de marca',
@@ -213,6 +220,19 @@ export const pipelines = [
         stateIn: null,
         stateOut: 'para_ejecucion',
         description: '5 pasos: idear concepto (skill), construir prompt (skill), escribir textos (doc), extraer estrategia (ficha), insertar en Supabase.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            creatividades: {
+              insert: [
+                'marca', 'estado → para_ejecucion', 'origen → original', 'condicion → null',
+                'prompt', 'concepto', 'slogan_headline', 'subtitulo', 'cta', 'copy', 'descripcion_corta',
+                'logo', 'gatillador',
+                'buyer_persona', 'dolor_anhelo', 'cambio_emocional', 'diferenciador', 'beneficios', 'objeciones_tipicas',
+              ],
+            },
+          },
+        },
         steps: [
           {
             label: 'Ideación de concepto',
@@ -288,6 +308,13 @@ export const pipelines = [
         stateIn: 'para_ejecucion',
         stateOut: null,
         description: 'El script lee la creatividad pendiente, envía el workflow a ComfyUI en PC-2, espera resultado por polling HTTP y descarga la imagen.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'prompt', 'marca'],
+          },
+          writes: {},
+          filters: ['estado = para_ejecucion', 'origen = original'],
+        },
         steps: [
           {
             label: 'Leer creatividad pendiente',
@@ -336,12 +363,21 @@ export const pipelines = [
         stateIn: 'para_ejecucion',
         stateOut: 'ejecutado',
         description: 'La imagen se sube a Supabase Storage y se actualiza la creatividad con la URL y el nuevo estado.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: ['{marca}_t2i_{timestamp}.png → bucket creatividades'],
+            creatividades: {
+              update: ['link_ren_1 → URL pública imagen', 'estado → ejecutado', 'condicion → para_revision'],
+            },
+          },
+        },
         steps: [
           {
             label: 'Subir imagen a Storage',
             resource: { type: 'supabase', name: 'INSERT storage', op: 'INSERT' },
             description: 'Upload al bucket "creatividades" de Supabase Storage.',
-            details: ['Nombre: esperancita_{timestamp}.png'],
+            details: ['Nombre: {marca}_t2i_{timestamp}.png'],
           },
           {
             label: 'Actualizar creatividad',

@@ -132,9 +132,9 @@ function buildWorkflow(prompt, seed) {
 }
 
 async function getPendingCreatividades() {
-  let url = `${SUPA}/rest/v1/creatividades?estado=eq.para_ejecucion&select=id,prompt,marca&order=id.asc`;
+  let url = `${SUPA}/rest/v1/creatividades?estado=eq.para_ejecucion&origen=eq.original&select=id,prompt,marca&order=id.asc`;
   if (onlyId) {
-    url = `${SUPA}/rest/v1/creatividades?id=eq.${onlyId}&select=id,prompt,marca`;
+    url = `${SUPA}/rest/v1/creatividades?id=eq.${onlyId}&origen=eq.original&select=id,prompt,marca`;
   }
   const r = await fetch(url, { headers: { 'Authorization': `Bearer ${KEY}`, 'apikey': KEY } });
   const data = await r.json();
@@ -193,8 +193,9 @@ async function downloadImage(filename, subfolder, type) {
   return Buffer.from(arrayBuffer);
 }
 
-async function uploadToSupabase(imageBuffer) {
-  const name = `esperancita_${Date.now()}.png`;
+async function uploadToSupabase(imageBuffer, marca) {
+  const safeMarca = marca.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const name = `${safeMarca}_t2i_${Date.now()}.png`;
   const r = await fetch(`${SUPA}/storage/v1/object/creatividades/${name}`, {
     method: 'POST',
     headers: {
@@ -209,7 +210,7 @@ async function uploadToSupabase(imageBuffer) {
     throw new Error(`Upload failed: ${r.status} ${err}`);
   }
   const data = await r.json();
-  return `https://fddokyfilokacsjdgiwe.supabase.co/storage/v1/object/public/${data.Key}`;
+  return `${SUPA}/storage/v1/object/public/${data.Key}`;
 }
 
 async function updateCreatividad(id, imageUrl) {
@@ -245,7 +246,7 @@ async function processOne(creatividad) {
   log(`  📥 Descargada (${(imageBuffer.length / 1024 / 1024).toFixed(1)} MB)`);
 
   // Upload to Supabase Storage
-  const imageUrl = await uploadToSupabase(imageBuffer);
+  const imageUrl = await uploadToSupabase(imageBuffer, marca);
   log(`  ☁️ Subida: ${imageUrl.split('/').pop()}`);
 
   // Update creatividad
