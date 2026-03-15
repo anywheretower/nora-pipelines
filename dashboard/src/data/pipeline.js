@@ -875,6 +875,19 @@ export const pipelines = [
         stateIn: 'ejecutado',
         stateOut: 'ejecutado (iteradas) / sin cambio (pasa)',
         description: 'QA con 4 dimensiones (vs 3 de text2img): incluye Consistencia del Input que evalúa fidelidad al original. Score ≥4.0 pasa, <4.0 duplica. Máximo 3 rondas.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'prompt', 'concepto', 'link_ren_1', 'url', 'tags', 'origen', 'condicion'],
+            marcas: ['ficha', 'paleta_colores', 'look_and_feel', 'contenido_prohibido'],
+          },
+          writes: {
+            creatividades: {
+              update_on_pass: ['tags → iterado_rN, score:X.X'],
+              insert_on_fail: ['2 nuevas creatividades con prompt de edición corregido, estado → para_ejecucion, url → misma imagen de referencia'],
+            },
+          },
+          filters: ['condicion = para_revision', 'origen IN (Producto, Colaborador, Interior, Exterior, Fachada)', 'tags NOT LIKE iterado_r3'],
+        },
         steps: [
           {
             label: 'Evaluar imagen (4 dimensiones)',
@@ -914,6 +927,20 @@ export const pipelines = [
         stateIn: 'observado',
         stateOut: 'para_ejecucion (nuevas) / para_revision (solo textos)',
         description: 'Mismo flujo que text2img: Jorge observa en NORA, skill interpreta y corrige.',
+        manual: true,
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'prompt', 'concepto', 'observacion', 'condicion', 'link_ren_1', 'url', 'slogan_headline', 'subtitulo', 'cta', 'copy', 'origen'],
+            marcas: ['ficha', 'paleta_colores', 'look_and_feel', 'contenido_prohibido'],
+          },
+          writes: {
+            creatividades: {
+              update_textos: ['slogan_headline', 'subtitulo', 'cta', 'copy', 'concepto', 'descripcion_corta', 'condicion → para_revision'],
+              insert_imagen: ['2 nuevas creatividades con prompt de edición corregido, estado → para_ejecucion, url → misma imagen de referencia'],
+            },
+          },
+          filters: ['observacion NOT NULL', 'condicion = observado', 'origen IN (Producto, Colaborador, Interior, Exterior, Fachada)'],
+        },
         steps: [
           {
             label: 'Detectar + interpretar observación',
