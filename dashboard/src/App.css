@@ -443,6 +443,25 @@ body {
   font-size: 0.58rem; color: var(--text-faint); margin-top: 4px;
   font-family: 'SF Mono', 'Fira Code', monospace; font-style: italic;
 }
+/* Enhanced filter (replaces .step-filter in JSX) */
+.step-filter-enhanced {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 6px; padding: 4px 8px;
+  background: var(--bg-card-alt); border: 1px solid var(--border-light);
+  border-radius: 3px;
+}
+.filter-prefix {
+  font-size: 0.52rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 1px 5px; border-radius: 2px;
+  background: var(--flow-input-bg); color: var(--flow-input-color);
+  border: 1px solid var(--flow-input-border);
+  flex-shrink: 0;
+}
+.filter-query {
+  font-size: 0.64rem; color: var(--text-secondary);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .step-state-change {
   font-size: 0.6rem; font-weight: 600; margin-top: 4px;
   color: var(--flow-gen-color);
@@ -902,6 +921,199 @@ body {
 .scroll-top.visible { display: flex; }
 
 /* ======================== */
+/* Pipeline Command Bar     */
+/* ======================== */
+.pipeline-command-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; margin-bottom: 12px;
+  background: var(--bg-stage); border: 1px solid var(--border-main);
+  border-radius: 5px;
+}
+.pipeline-command {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.82rem; font-weight: 600;
+  color: var(--accent); flex: 1;
+}
+.copy-btn {
+  font-size: 0.6rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 4px 10px; border-radius: 3px;
+  border: 1px solid var(--border-main); background: var(--bg-card);
+  color: var(--text-secondary); cursor: pointer;
+  font-family: inherit; transition: all 0.15s;
+}
+.copy-btn:hover {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+
+/* ======================== */
+/* Pipeline Summary         */
+/* ======================== */
+.pipeline-summary {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.summary-stat {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 1px; padding: 8px 14px;
+  background: var(--bg-stage); border: 1px solid var(--border-light);
+  border-radius: 5px; min-width: 72px;
+}
+.summary-stat-num {
+  font-size: 1.1rem; font-weight: 700; color: var(--accent);
+}
+.summary-stat-label {
+  font-size: 0.55rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text-faint);
+}
+.summary-stat-detail {
+  font-size: 0.52rem; color: var(--text-tertiary);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  max-width: 120px; text-align: center; line-height: 1.3;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.summary-stat-hw {
+  flex-direction: row; gap: 6px; align-items: center;
+}
+.summary-stat-hw .summary-stat-detail {
+  max-width: 200px;
+}
+
+/* ======================== */
+/* State Flow Strip         */
+/* ======================== */
+.state-flow-strip {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 12px; padding: 8px 12px;
+  background: var(--bg-stage); border: 1px solid var(--border-light);
+  border-radius: 5px; overflow-x: auto;
+}
+.state-flow-label {
+  font-size: 0.6rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text-faint); flex-shrink: 0;
+}
+.state-flow-nodes {
+  display: flex; align-items: center; gap: 4px;
+}
+.state-flow-node {
+  display: flex; align-items: center; gap: 4px;
+}
+
+/* ======================== */
+/* Supabase Fields Panel    */
+/* ======================== */
+.sb-fields-panel {
+  margin-bottom: 16px; padding: 12px;
+  background: var(--bg-stage); border: 1px solid var(--border-main);
+  border-radius: 5px;
+}
+.sb-fields-title {
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text-tertiary);
+  margin-bottom: 10px;
+}
+.sb-section {
+  margin-bottom: 10px;
+}
+.sb-section:last-child { margin-bottom: 0; }
+.sb-section-label {
+  font-size: 0.55rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 2px 7px; border-radius: 3px;
+  display: inline-block; margin-bottom: 6px;
+}
+.sb-section-reads {
+  background: var(--flow-input-bg); color: var(--flow-input-color);
+  border: 1px solid var(--flow-input-border);
+}
+.sb-section-writes {
+  background: var(--flow-gen-bg); color: var(--flow-gen-color);
+  border: 1px solid var(--flow-gen-border);
+}
+.sb-section-filters {
+  background: var(--flow-qa-bg); color: var(--flow-qa-color);
+  border: 1px solid var(--flow-qa-border);
+}
+.sb-table-row {
+  margin-bottom: 6px; padding-left: 8px;
+}
+.sb-table-name {
+  font-size: 0.64rem; font-weight: 600; color: var(--text-secondary);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  display: block; margin-bottom: 3px;
+}
+.sb-field-list {
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.sb-field-badge {
+  font-size: 0.54rem; padding: 2px 7px; border-radius: 3px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  white-space: nowrap;
+}
+.sb-field-read {
+  background: var(--flow-input-bg); color: var(--flow-input-color);
+  border: 1px solid var(--flow-input-border);
+}
+.sb-field-write {
+  background: var(--bg-card); color: var(--text-secondary);
+  border: 1px solid var(--border-main);
+}
+.sb-field-storage {
+  background: var(--flow-step-bg); color: var(--flow-step-color);
+  border: 1px solid var(--flow-step-border);
+}
+.sb-writes-subkeys {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.sb-subkey-row {
+  padding-left: 8px;
+}
+.sb-op-badge {
+  font-size: 0.52rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.3px; padding: 2px 6px; border-radius: 3px;
+  display: inline-block; margin-bottom: 4px;
+}
+.sb-op-insert {
+  background: var(--flow-gen-bg); color: var(--flow-gen-color);
+  border: 1px solid var(--flow-gen-border);
+}
+.sb-op-update {
+  background: var(--flow-script-bg); color: var(--flow-script-color);
+  border: 1px solid var(--flow-script-border);
+}
+.sb-filters-list {
+  display: flex; flex-direction: column; gap: 4px; padding-left: 8px;
+}
+.sb-filter-code {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 8px;
+  background: var(--bg-card); border: 1px solid var(--border-light);
+  border-radius: 3px;
+}
+.sb-filter-code code {
+  font-size: 0.62rem; color: var(--text-secondary);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+/* ======================== */
+/* Manual Phase Badge       */
+/* ======================== */
+.exec-phase-manual {
+  border: 2px dashed var(--flow-obs-border) !important;
+  position: relative;
+}
+.manual-badge {
+  font-size: 0.52rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 2px 7px; border-radius: 3px;
+  background: var(--flow-obs-bg); color: var(--flow-obs-color);
+  border: 1px solid var(--flow-obs-border);
+}
+.manual-badge-sm {
+  font-size: 0.46rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.3px; padding: 1px 5px; border-radius: 2px;
+  background: var(--flow-obs-bg); color: var(--flow-obs-color);
+  border: 1px solid var(--flow-obs-border);
+}
+
+/* ======================== */
 /* Responsive               */
 /* ======================== */
 @media (max-width: 900px) {
@@ -912,10 +1124,16 @@ body {
   .phase-strip { flex-wrap: wrap; }
   .phase-strip-item { min-width: 33%; }
   .phase-strip-arrow { display: none; }
+  .pipeline-summary { gap: 8px; }
+  .summary-stat { padding: 6px 10px; min-width: 60px; }
+  .state-flow-strip { flex-wrap: wrap; }
 }
 @media (max-width: 640px) {
   .docs-grid { grid-template-columns: 1fr; }
   .pipeline-card-subtitle { display: none; }
   .header-stats { gap: 16px; }
   .detail-sequence { flex-wrap: wrap; }
+  .pipeline-command-bar { flex-wrap: wrap; }
+  .sb-field-list { gap: 3px; }
+  .summary-stat-hw { display: none; }
 }

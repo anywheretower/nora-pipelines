@@ -1384,8 +1384,8 @@ export const pipelines = [
           reads: {},
           writes: {
             storage: [
-              '{marca}_ugc_{ts}_916.mp4 → bucket creatividades (9:16 stories)',
-              '{marca}_ugc_{ts}_45.mp4 → bucket creatividades (4:5 feed)',
+              '{marca}_ugc_{timestamp}_916.mp4 → bucket creatividades (9:16 stories)',
+              '{marca}_ugc_{timestamp}_45.mp4 → bucket creatividades (4:5 feed)',
             ],
             creatividades: {
               insert: [
