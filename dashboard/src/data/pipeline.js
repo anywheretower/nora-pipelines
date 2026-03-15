@@ -307,20 +307,25 @@ export const pipelines = [
         executorDetail: 'comfy-text2img.mjs',
         stateIn: 'para_ejecucion',
         stateOut: null,
-        description: 'El script lee la creatividad pendiente, envía el workflow a ComfyUI en PC-2, espera resultado por polling HTTP y descarga la imagen.',
+        description: 'El script marca la creatividad como en_proceso, envía el workflow a ComfyUI en PC-2, espera resultado por polling HTTP y descarga la imagen. Si falla, marca como error.',
         supabaseFields: {
           reads: {
             creatividades: ['id', 'prompt', 'marca'],
           },
-          writes: {},
+          writes: {
+            creatividades: {
+              update_on_pickup: ['estado → en_proceso'],
+              update_on_error: ['estado → error', 'observacion → [auto] mensaje de error'],
+            },
+          },
           filters: ['estado = para_ejecucion', 'origen = original'],
         },
         steps: [
           {
             label: 'Leer creatividad pendiente',
             resource: { type: 'supabase', name: 'READ creatividades', op: 'READ' },
-            description: 'Query a Supabase para obtener creatividades con estado para_ejecucion.',
-            filter: 'estado = para_ejecucion',
+            description: 'Query a Supabase para obtener creatividades con estado para_ejecucion y origen original.',
+            filter: 'estado = para_ejecucion AND origen = original',
           },
           {
             label: 'Enviar workflow a ComfyUI',
@@ -400,7 +405,20 @@ export const pipelines = [
         optional: true,
         stateIn: 'ejecutado',
         stateOut: 'ejecutado (iteradas) / sin cambio (pasa)',
-        description: 'Auto-evaluación visual contra 3 dimensiones. Score ≥4.0 pasa con tags. Score <4.0 duplica con prompt ajustado y regenera. Máximo 3 rondas.',
+        description: 'Auto-evaluación visual contra 3 dimensiones. Score ≥4.0 pasa con tags. Score <4.0 duplica con prompt ajustado y regenera. Máximo 3 rondas. Cubre TODOS los pipelines de imagen (original, referencia, universal, requerido, calendario).',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'prompt', 'concepto', 'link_ren_1', 'tags', 'origen', 'condicion'],
+            marcas: ['ficha', 'paleta_colores', 'look_and_feel', 'contenido_prohibido'],
+          },
+          writes: {
+            creatividades: {
+              update_on_pass: ['tags → iterado_rN, score:X.X'],
+              insert_on_fail: ['2 nuevas creatividades con prompt corregido, estado → para_ejecucion'],
+            },
+          },
+          filters: ['condicion = para_revision', 'origen IN (original, referencia, universal, requerido, calendario)', 'tags NOT LIKE iterado_r3'],
+        },
         steps: [
           {
             label: 'Seleccionar candidatas',
@@ -466,9 +484,23 @@ export const pipelines = [
         executor: 'skill',
         executorDetail: 'nora-imagen-observacion',
         optional: true,
+        manual: true,
         stateIn: 'observado',
         stateOut: 'para_ejecucion (nuevas) / para_revision (solo textos)',
-        description: 'Jorge revisa la creatividad en NORA y deja una observación. El skill interpreta el tipo de corrección y actúa según corresponda.',
+        description: 'Jorge revisa la creatividad en NORA y deja una observación. El skill interpreta el tipo de corrección y actúa según corresponda. NOTA: este paso es manual — requiere invocación de /nora-imagen-observacion. Las creatividades en condicion=observado esperan indefinidamente hasta ser procesadas.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'prompt', 'concepto', 'observacion', 'condicion', 'link_ren_1', 'slogan_headline', 'subtitulo', 'cta', 'copy'],
+            marcas: ['ficha', 'paleta_colores', 'look_and_feel', 'contenido_prohibido'],
+          },
+          writes: {
+            creatividades: {
+              update_textos: ['slogan_headline', 'subtitulo', 'cta', 'copy', 'concepto', 'descripcion_corta', 'condicion → para_revision'],
+              insert_imagen: ['2 nuevas creatividades con prompt corregido, estado → para_ejecucion'],
+            },
+          },
+          filters: ['observacion NOT NULL', 'condicion = observado'],
+        },
         steps: [
           {
             label: 'Detectar observaciones pendientes',

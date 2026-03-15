@@ -2,9 +2,10 @@
  * NORA — Texto a Imagen 3:4
  * Genera imagen vía ComfyUI remoto (PC-2), sube a Supabase Storage, actualiza registro.
  *
- * Uso: node comfy-text2img.mjs [--once] [--id=123]
+ * Uso: node comfy-text2img.mjs [--once] [--id=123] [--max=4]
  *   --once    Procesa lo pendiente y sale (no hace polling)
  *   --id=123  Procesa solo esa creatividad
+ *   --max=N   Máximo N imágenes por corrida (default: 4, por VRAM leak)
  */
 
 // --- Load .env from project root ---
@@ -46,6 +47,8 @@ const args = process.argv.slice(2);
 const once = args.includes('--once');
 const idArg = args.find(a => a.startsWith('--id='));
 const onlyId = idArg ? parseInt(idArg.split('=')[1]) : null;
+const maxArg = args.find(a => a.startsWith('--max='));
+const MAX_PER_RUN = maxArg ? parseInt(maxArg.split('=')[1]) : 4; // VRAM leak safety
 
 function log(msg) {
   const ts = new Date().toLocaleTimeString('es-CL', { hour12: false });
@@ -213,6 +216,28 @@ async function uploadToSupabase(imageBuffer, marca) {
   return `${SUPA}/storage/v1/object/public/${data.Key}`;
 }
 
+async function markAsProcessing(id) {
+  const r = await fetch(`${SUPA}/rest/v1/creatividades?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: supaHeaders,
+    body: JSON.stringify({ estado: 'en_proceso' })
+  });
+  if (r.status !== 204) throw new Error(`Mark en_proceso failed: ${r.status}`);
+}
+
+async function markAsError(id, errorMsg) {
+  try {
+    await fetch(`${SUPA}/rest/v1/creatividades?id=eq.${id}`, {
+      method: 'PATCH',
+      headers: supaHeaders,
+      body: JSON.stringify({
+        estado: 'error',
+        observacion: `[auto] ${errorMsg.substring(0, 500)}`
+      })
+    });
+  } catch { /* best effort — don't mask the original error */ }
+}
+
 async function updateCreatividad(id, imageUrl) {
   const r = await fetch(`${SUPA}/rest/v1/creatividades?id=eq.${id}`, {
     method: 'PATCH',
@@ -229,6 +254,9 @@ async function updateCreatividad(id, imageUrl) {
 async function processOne(creatividad) {
   const { id, prompt, marca } = creatividad;
   log(`▶ #${id} [${marca}] — Generando imagen...`);
+
+  // Mark as processing to prevent duplicate pickup
+  await markAsProcessing(id);
 
   const seed = randomSeed();
   const workflow = buildWorkflow(prompt, seed);
@@ -315,7 +343,15 @@ async function run() {
       await processOne(c);
     } catch (e) {
       log(`❌ #${c.id} Error: ${e.message}`);
+      await markAsError(c.id, e.message);
+      log(`  ⚠️ #${c.id} → estado=error`);
       stats.fail++;
+    }
+
+    // Límite por corrida: máx 4 imágenes (VRAM leak en ComfyUI)
+    if (stats.ok + stats.fail >= MAX_PER_RUN) {
+      log(`🛑 Límite de ${MAX_PER_RUN} imágenes por corrida alcanzado.`);
+      break;
     }
 
     // Pausa de 5s entre imágenes para dejar que ComfyUI se estabilice
