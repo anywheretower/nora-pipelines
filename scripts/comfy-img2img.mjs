@@ -2,10 +2,11 @@
  * NORA — Imagen a Imagen (Qwen Image Edit 2511)
  * Genera imagen editada vía ComfyUI remoto (PC-2), sube a Supabase Storage, actualiza registro.
  *
- * Uso: node comfy-img2img.mjs [--once] [--id=123] [--max=4]
- *   --once    Procesa lo pendiente y sale (no hace polling)
- *   --id=123  Procesa solo esa creatividad
- *   --max=N   Máximo N imágenes por corrida (default: 4, por VRAM leak)
+ * Uso: node comfy-img2img.mjs [--once] [--id=123] [--max=4] [--res=1920x1080]
+ *   --once       Procesa lo pendiente y sale (no hace polling)
+ *   --id=123     Procesa solo esa creatividad
+ *   --max=N      Máximo N imágenes por corrida (default: 4, por VRAM leak)
+ *   --res=WxH    Resolución con pad blanco (para pantalla 16:9)
  */
 
 // --- Load .env from project root ---
@@ -35,7 +36,7 @@ const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
 const POLL_INTERVAL = 30000;
 const COMFY_POLL = 3000;
 
-const IMG2IMG_ORIGENES = ['Producto', 'Colaborador', 'Interior', 'Exterior', 'Fachada'];
+const IMG2IMG_ORIGENES = ['Producto', 'Colaborador', 'Interior', 'Exterior', 'Fachada', 'Pantalla'];
 
 const NEGATIVE_PROMPT = "texto, text, letters, words, logos, watermark, marca de agua, overlay, banner, subtitles, subtítulos, artefactos, distorsiones, duplicated face, duplicate person, extra limbs, deformed hands, low quality, blurry";
 
@@ -53,6 +54,8 @@ const idArg = args.find(a => a.startsWith('--id='));
 const onlyId = idArg ? parseInt(idArg.split('=')[1]) : null;
 const maxArg = args.find(a => a.startsWith('--max='));
 const MAX_PER_RUN = maxArg ? parseInt(maxArg.split('=')[1]) : 4; // VRAM leak safety
+const resArg = args.find(a => a.startsWith('--res='));
+const [IMG_W, IMG_H] = resArg ? resArg.split('=')[1].split('x').map(Number) : [0, 0];
 
 function log(msg) {
   const ts = new Date().toLocaleTimeString('es-CL', { hour12: false });
@@ -66,7 +69,10 @@ function randomSeed() {
 }
 
 function buildWorkflow(prompt, imageUrl, seed) {
-  return {
+  // When --res is set, insert a padding node between LoadImage and the rest
+  const imgSource = IMG_W ? ["140", 0] : ["141", 0];
+
+  const workflow = {
     prompt: {
       "60": {
         inputs: { filename_prefix: "nora-i2i", images: ["107", 0] },
@@ -83,7 +89,7 @@ function buildWorkflow(prompt, imageUrl, seed) {
           prompt: NEGATIVE_PROMPT,
           clip: ["108", 0],
           vae: ["103", 0],
-          image: ["141", 0]
+          image: imgSource
         },
         class_type: "TextEncodeQwenImageEdit",
         _meta: { title: "TextEncodeQwenImageEdit" }
@@ -109,7 +115,7 @@ function buildWorkflow(prompt, imageUrl, seed) {
         _meta: { title: "Load CLIP" }
       },
       "109": {
-        inputs: { pixels: ["141", 0], vae: ["103", 0] },
+        inputs: { pixels: imgSource, vae: ["103", 0] },
         class_type: "VAEEncode",
         _meta: { title: "VAE Encode" }
       },
@@ -133,7 +139,7 @@ function buildWorkflow(prompt, imageUrl, seed) {
           prompt,
           clip: ["108", 0],
           vae: ["103", 0],
-          image: ["141", 0]
+          image: imgSource
         },
         class_type: "TextEncodeQwenImageEdit",
         _meta: { title: "TextEncodeQwenImageEdit" }
@@ -151,6 +157,27 @@ function buildWorkflow(prompt, imageUrl, seed) {
     },
     client_id: "nora-i2i"
   };
+
+  // Pad node: center original image on white canvas at target resolution
+  if (IMG_W) {
+    workflow.prompt["140"] = {
+      inputs: {
+        width: IMG_W,
+        height: IMG_H,
+        upscale_method: "nearest-exact",
+        keep_proportion: "pad",
+        pad_color: "255, 255, 255",
+        crop_position: "center",
+        divisible_by: 2,
+        device: "cpu",
+        image: ["141", 0]
+      },
+      class_type: "ImageResizeKJv2",
+      _meta: { title: "Pad to target resolution" }
+    };
+  }
+
+  return workflow;
 }
 
 async function getPendingCreatividades() {
