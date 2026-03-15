@@ -549,7 +549,7 @@ async function createCreatividadFinal(marca, url45, url916, sourceCreatividad) {
   log('Creando creatividad final...');
   const body = {
     marca,
-    origen: 'video',
+    origen: 'ugc',
     estado: 'ejecutado',
     condicion: 'para_revision',
     prompt: sourceCreatividad.prompt,

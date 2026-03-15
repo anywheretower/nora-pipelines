@@ -8,7 +8,7 @@
  *
  * La creatividad debe tener:
  *   - estado: "base_lista"
- *   - origen: "video"
+ *   - origen: "ugc"
  *   - condicion: "aprobado" o "para_revision"
  *   - url: URL del audio WAV en Supabase Storage
  */
@@ -444,8 +444,8 @@ async function run() {
     log(`Creatividad #${onlyId} tiene estado="${creatividad.estado}" (esperado: base_lista). Abortando.`);
     process.exit(1);
   }
-  if (creatividad.origen !== 'video') {
-    log(`Creatividad #${onlyId} tiene origen="${creatividad.origen}" (esperado: video). Abortando.`);
+  if (creatividad.origen !== 'ugc') {
+    log(`Creatividad #${onlyId} tiene origen="${creatividad.origen}" (esperado: ugc). Abortando.`);
     process.exit(1);
   }
   const validCondiciones = ['aprobado', 'para_revision'];

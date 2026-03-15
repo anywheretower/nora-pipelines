@@ -11,7 +11,7 @@
  * La creatividad debe tener:
  *   - prompt: texto para LTX-Video 2.3
  *   - url: URL del audio WAV en Supabase Storage
- *   - origen: "video"
+ *   - origen: "ugc"
  *   - estado: "para_ejecucion"
  */
 
@@ -143,9 +143,9 @@ function buildWorkflow(prompt, audioFilename, seed, duration, id) {
 // =============================================================
 
 async function getPendingCreatividades() {
-  let url = `${SUPA}/rest/v1/creatividades?estado=eq.para_ejecucion&origen=eq.video&prompt=not.is.null&url=not.is.null&select=id,prompt,marca,url,concepto&order=id.asc`;
+  let url = `${SUPA}/rest/v1/creatividades?estado=eq.para_ejecucion&origen=eq.ugc&prompt=not.is.null&url=not.is.null&select=id,prompt,marca,url,concepto&order=id.asc`;
   if (onlyId) {
-    url = `${SUPA}/rest/v1/creatividades?id=eq.${onlyId}&origen=eq.video&select=id,prompt,marca,url,concepto`;
+    url = `${SUPA}/rest/v1/creatividades?id=eq.${onlyId}&origen=eq.ugc&select=id,prompt,marca,url,concepto`;
   }
   const r = await fetch(url, { headers: { 'Authorization': `Bearer ${KEY}`, 'apikey': KEY } });
   const data = await r.json();

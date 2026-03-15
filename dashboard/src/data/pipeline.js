@@ -1081,7 +1081,7 @@ export const pipelines = [
             storage: ['{marca}_ugc_audio_{timestamp}.wav → bucket creatividades (audio Cartesia)'],
             creatividades: {
               insert: [
-                'marca', 'estado → para_ejecucion', 'origen → video', 'condicion → null',
+                'marca', 'estado → para_ejecucion', 'origen → ugc', 'condicion → null',
                 'prompt → texto LTX en inglés', 'url → audio WAV en Storage',
                 'concepto', 'slogan_headline', 'copy',
               ],
@@ -1135,7 +1135,7 @@ export const pipelines = [
             description: 'Creatividad con prompt, audio URL y campos de copy.',
             details: [
               'estado: para_ejecucion',
-              'origen: video',
+              'origen: ugc',
               'prompt: texto LTX en inglés',
               'url: audio WAV en Supabase Storage',
               'concepto, slogan_headline, copy',
@@ -1162,7 +1162,7 @@ export const pipelines = [
               update_on_error: ['estado → error', 'observacion → [auto] mensaje de error'],
             },
           },
-          filters: ['estado = para_ejecucion', 'origen = video', 'prompt NOT NULL', 'url NOT NULL'],
+          filters: ['estado = para_ejecucion', 'origen = ugc', 'prompt NOT NULL', 'url NOT NULL'],
         },
         steps: [
           {
@@ -1384,7 +1384,7 @@ export const pipelines = [
             ],
             creatividades: {
               insert: [
-                'marca', 'estado → ejecutado', 'origen → video', 'condicion → para_revision',
+                'marca', 'estado → ejecutado', 'origen → ugc', 'condicion → para_revision',
                 'link_ren_1 → video 4:5 (feed)', 'link_ren_2 → video 9:16 (stories)',
                 'prompt, concepto, copy, slogan_headline → heredados de creatividad base',
               ],
@@ -1414,7 +1414,7 @@ export const pipelines = [
             details: [
               'link_ren_1 → 4:5 (feed)',
               'link_ren_2 → 9:16 (stories/TikTok)',
-              'origen: video',
+              'origen: ugc',
               'condicion: para_revision',
             ],
             stateChange: 'NULL → ejecutado',
