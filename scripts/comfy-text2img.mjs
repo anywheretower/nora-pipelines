@@ -139,9 +139,9 @@ function buildWorkflow(prompt, seed) {
 }
 
 async function getPendingCreatividades() {
-  let url = `${SUPA}/rest/v1/creatividades?estado=eq.para_ejecucion&origen=in.(original,referencia,pantalla)&select=id,prompt,marca&order=id.asc`;
+  let url = `${SUPA}/rest/v1/creatividades?estado=eq.para_ejecucion&origen=in.(original,referencia,Pantalla)&select=id,prompt,marca&order=id.asc`;
   if (onlyId) {
-    url = `${SUPA}/rest/v1/creatividades?id=eq.${onlyId}&origen=in.(original,referencia,pantalla)&select=id,prompt,marca`;
+    url = `${SUPA}/rest/v1/creatividades?id=eq.${onlyId}&origen=in.(original,referencia,Pantalla)&select=id,prompt,marca`;
   }
   const r = await fetch(url, { headers: { 'Authorization': `Bearer ${KEY}`, 'apikey': KEY } });
   const data = await r.json();

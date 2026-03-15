@@ -1340,9 +1340,15 @@ export const pipelines = [
 
     executionBlocks: [
       {
+        executor: 'nora',
+        label: 'NORA: aprobación → crear versión Pantalla',
+        phases: ['activador'],
+        handoff: 'creatividad en Supabase (prompt sin adaptar)',
+      },
+      {
         executor: 'skill',
         label: 'Skill: nora-creatividad-pantalla',
-        phases: ['activador', 'lectura', 'procesamiento'],
+        phases: ['lectura', 'procesamiento'],
         handoff: 'ejecuta script via Bash',
       },
       {
@@ -1362,40 +1368,67 @@ export const pipelines = [
 
     phases: {
       activador: {
-        title: 'Creatividad aprobada → versión 16:9',
-        executor: 'skill',
+        title: 'NORA crea versión Pantalla al aprobar',
+        executor: 'nora',
         stateIn: null,
-        stateOut: null,
-        description: 'Se activa cuando hay creatividades text2img aprobadas que necesitan versión horizontal para pantallas/TVs. El skill duplica la creatividad adaptando el prompt a composición 16:9.',
-        supabaseFields: { reads: {}, writes: {} },
+        stateOut: 'para_procesamiento',
+        description: 'Cuando Jorge aprueba una creatividad de imagen en NORA, el frontend crea automáticamente una nueva creatividad con origen=Pantalla, estado=para_procesamiento, condicion=requerido. Copia el prompt original (3:4) y los textos. El prompt aún no está adaptado a 16:9.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            creatividades: {
+              insert: [
+                'marca', 'estado → para_procesamiento', 'condicion → requerido',
+                'origen → Pantalla',
+                'prompt → copiado de la creatividad origen (aún vertical)',
+                'gatillador → "Pantalla 16:9 desde creatividad #N"',
+                'slogan_headline', 'subtitulo', 'cta',
+              ],
+            },
+          },
+        },
         steps: [
           {
-            label: 'Detectar creatividades aprobadas',
-            resource: { type: 'skill', name: 'nora-creatividad-pantalla' },
-            description: 'Busca creatividades t2i aprobadas que no tengan versión pantalla aún, o procesa pedidos directos.',
+            label: 'Jorge aprueba creatividad de imagen',
+            resource: { type: 'usuario', name: 'NORA Dashboard' },
+            description: 'Al aprobar una creatividad t2i, NORA crea automáticamente la versión Pantalla.',
+          },
+          {
+            label: 'INSERT creatividad Pantalla',
+            resource: { type: 'supabase', name: 'INSERT creatividades', op: 'INSERT' },
+            description: 'NORA crea la creatividad directamente en Supabase con prompt copiado y textos heredados.',
+            details: [
+              'estado → para_procesamiento',
+              'condicion → requerido',
+              'origen → Pantalla',
+              'prompt → copiado (aún dice "Vertical format")',
+              'slogan_headline, subtitulo, cta → heredados',
+            ],
+            stateChange: 'NULL → para_procesamiento (condicion: requerido)',
           },
         ],
       },
 
       lectura: {
-        title: 'Creatividad origen + marca',
+        title: 'Creatividad Pantalla pendiente + marca',
         executor: 'skill',
         executorDetail: 'nora-creatividad-pantalla',
-        stateIn: null,
+        stateIn: 'para_procesamiento',
         stateOut: null,
-        description: 'Lee la creatividad origen aprobada (prompt, concepto, textos) y la ficha de marca para adaptar la composición.',
+        description: 'Detecta creatividades Pantalla en para_procesamiento y lee la ficha de marca para adaptar la composición.',
         supabaseFields: {
           reads: {
-            creatividades: ['id', 'prompt', 'marca', 'concepto', 'slogan_headline', 'subtitulo', 'cta', 'copy', 'gatillador'],
+            creatividades: ['id', 'prompt', 'marca', 'slogan_headline', 'subtitulo', 'cta', 'gatillador'],
             marcas: ['paleta_colores', 'look_and_feel', 'notas_generales', 'contenido_prohibido'],
           },
           writes: {},
         },
         steps: [
           {
-            label: 'Leer creatividad origen',
+            label: 'Detectar creatividades Pantalla pendientes',
             resource: { type: 'supabase', name: 'READ creatividades', op: 'READ' },
-            description: 'La creatividad t2i aprobada con su prompt original en composición 3:4.',
+            description: 'Busca creatividades con estado=para_procesamiento, origen=Pantalla, condicion=requerido.',
+            filter: 'estado = para_procesamiento AND origen = Pantalla AND condicion = requerido',
           },
           {
             label: 'Leer identidad de marca',
@@ -1407,21 +1440,20 @@ export const pipelines = [
       },
 
       procesamiento: {
-        title: 'Adaptar prompt a 16:9 + INSERT',
+        title: 'Adaptar prompt a 16:9 + UPDATE',
         executor: 'skill',
         executorDetail: 'nora-creatividad-pantalla',
-        stateIn: null,
+        stateIn: 'para_procesamiento',
         stateOut: 'para_ejecucion',
-        description: 'Adapta el prompt de composición vertical (3:4) a horizontal (16:9): redistribuye elementos, aprovecha el ancho, mantiene espacio para texto. Inserta como nueva creatividad con origen=pantalla.',
+        description: 'Adapta el prompt de composición vertical (3:4) a horizontal (16:9): redistribuye elementos, aprovecha el ancho. La creatividad ya existe (creada por NORA), se hace UPDATE.',
         supabaseFields: {
           reads: {},
           writes: {
             creatividades: {
-              insert: [
-                'marca', 'estado → para_ejecucion', 'origen → pantalla', 'condicion → null',
+              update: [
                 'prompt → adaptado a composición 16:9 horizontal',
-                'gatillador → "Pantalla 16:9 desde creatividad #N"',
-                'concepto', 'slogan_headline', 'subtitulo', 'cta', 'copy', 'descripcion_corta',
+                'estado → para_ejecucion (transición desde para_procesamiento)',
+                'condicion → null (limpia "requerido")',
               ],
             },
           },
@@ -1432,18 +1464,22 @@ export const pipelines = [
             resource: { type: 'skill', name: 'nora-creatividad-pantalla' },
             description: 'Reescribe el prompt para formato 16:9: redistribuir elementos horizontalmente, aprovechar ancho extra, mantener esencia visual.',
             details: [
-              'Cambiar composición vertical → horizontal (landscape/wide)',
+              'Cambiar "Vertical format" → "Horizontal format, landscape, wide 16:9 composition"',
               'Redistribuir foreground/midground/background para el ancho',
               'Mantener espacio para texto adaptado al formato horizontal',
               'Misma paleta, misma atmósfera, mismo concepto',
-              'Validar contra prompt-master (6 bloques, checklist)',
             ],
           },
           {
-            label: 'Insertar creatividad pantalla',
-            resource: { type: 'supabase', name: 'INSERT creatividades', op: 'INSERT' },
-            description: 'Nueva creatividad con origen=pantalla, prompt adaptado a 16:9. Hereda textos de la creatividad origen.',
-            stateChange: 'NULL → para_ejecucion',
+            label: 'Actualizar creatividad (UPDATE)',
+            resource: { type: 'supabase', name: 'UPDATE creatividades', op: 'UPDATE' },
+            description: 'Sobreescribe el prompt con la versión adaptada a 16:9. Transiciona estado.',
+            details: [
+              'prompt → versión horizontal',
+              'estado → para_ejecucion',
+              'condicion → null',
+            ],
+            stateChange: 'para_procesamiento → para_ejecucion',
           },
         ],
       },
@@ -1465,14 +1501,14 @@ export const pipelines = [
               update_on_error: ['estado → error', 'observacion → [auto] mensaje de error'],
             },
           },
-          filters: ['estado = para_ejecucion', 'origen = pantalla'],
+          filters: ['estado = para_ejecucion', 'origen = Pantalla'],
         },
         steps: [
           {
             label: 'Leer creatividad pendiente',
             resource: { type: 'supabase', name: 'READ creatividades', op: 'READ' },
             description: 'Query con estado para_ejecucion y origen pantalla.',
-            filter: 'estado = para_ejecucion AND origen = pantalla',
+            filter: 'estado = para_ejecucion AND origen = Pantalla',
           },
           {
             label: 'Enviar workflow a ComfyUI (16:9)',
@@ -1555,7 +1591,7 @@ export const pipelines = [
               insert_imagen: ['nuevas creatividades con prompt corregido, estado → para_ejecucion'],
             },
           },
-          filters: ['observacion NOT NULL', 'condicion = observado', 'origen = pantalla'],
+          filters: ['observacion NOT NULL', 'condicion = observado', 'origen = Pantalla'],
         },
         steps: [
           {
