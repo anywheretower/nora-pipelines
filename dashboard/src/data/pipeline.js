@@ -741,7 +741,19 @@ export const pipelines = [
         executorDetail: 'comfy-img2img.mjs',
         stateIn: 'para_ejecucion',
         stateOut: null,
-        description: 'El script carga la imagen de referencia + prompt, envía el workflow de edición a ComfyUI y descarga el resultado.',
+        description: 'El script marca en_proceso, carga la imagen de referencia + prompt, envía el workflow de edición a ComfyUI y descarga el resultado. Si falla, marca como error.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'prompt', 'marca', 'url', 'origen'],
+          },
+          writes: {
+            creatividades: {
+              update_on_pickup: ['estado → en_proceso'],
+              update_on_error: ['estado → error', 'observacion → [auto] mensaje de error'],
+            },
+          },
+          filters: ['estado = para_ejecucion', 'origen IN (Producto, Colaborador, Interior, Exterior, Fachada)', 'prompt NOT NULL', 'url NOT NULL'],
+        },
         steps: [
           {
             label: 'Leer creatividad pendiente',
@@ -790,12 +802,21 @@ export const pipelines = [
         stateIn: 'para_ejecucion',
         stateOut: 'ejecutado',
         description: 'La imagen editada se sube a Supabase Storage y se actualiza la creatividad.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: ['{marca}_i2i_{timestamp}.png → bucket creatividades'],
+            creatividades: {
+              update: ['link_ren_1 → URL pública imagen', 'estado → ejecutado', 'condicion → para_revision'],
+            },
+          },
+        },
         steps: [
           {
             label: 'Subir imagen a Storage',
             resource: { type: 'supabase', name: 'INSERT storage', op: 'INSERT' },
             description: 'Upload al bucket "creatividades" de Supabase Storage.',
-            details: ['Nombre: esperancita_{timestamp}.png'],
+            details: ['Nombre: {marca}_i2i_{timestamp}.png'],
           },
           {
             label: 'Actualizar creatividad',

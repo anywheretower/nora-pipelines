@@ -2,9 +2,10 @@
  * NORA — Imagen a Imagen (Qwen Image Edit 2511)
  * Genera imagen editada vía ComfyUI remoto (PC-2), sube a Supabase Storage, actualiza registro.
  *
- * Uso: node comfy-img2img.mjs [--once] [--id=123]
+ * Uso: node comfy-img2img.mjs [--once] [--id=123] [--max=4]
  *   --once    Procesa lo pendiente y sale (no hace polling)
  *   --id=123  Procesa solo esa creatividad
+ *   --max=N   Máximo N imágenes por corrida (default: 4, por VRAM leak)
  */
 
 // --- Load .env from project root ---
@@ -50,6 +51,8 @@ const args = process.argv.slice(2);
 const once = args.includes('--once');
 const idArg = args.find(a => a.startsWith('--id='));
 const onlyId = idArg ? parseInt(idArg.split('=')[1]) : null;
+const maxArg = args.find(a => a.startsWith('--max='));
+const MAX_PER_RUN = maxArg ? parseInt(maxArg.split('=')[1]) : 4; // VRAM leak safety
 
 function log(msg) {
   const ts = new Date().toLocaleTimeString('es-CL', { hour12: false });
@@ -153,9 +156,9 @@ function buildWorkflow(prompt, imageUrl, seed) {
 async function getPendingCreatividades() {
   let url;
   if (onlyId) {
-    url = `${SUPA}/rest/v1/creatividades?id=eq.${onlyId}&select=id,prompt,marca,url,estado,origen`;
+    url = `${SUPA}/rest/v1/creatividades?id=eq.${onlyId}&origen=in.(${IMG2IMG_ORIGENES.join(',')})&select=id,prompt,marca,url,estado,origen`;
   } else {
-    url = `${SUPA}/rest/v1/creatividades?estado=eq.para_ejecucion&origen=in.(${IMG2IMG_ORIGENES.join(',')})&select=id,prompt,marca,url,estado,origen&order=id.asc`;
+    url = `${SUPA}/rest/v1/creatividades?estado=eq.para_ejecucion&origen=in.(${IMG2IMG_ORIGENES.join(',')})&prompt=not.is.null&url=not.is.null&select=id,prompt,marca,url,estado,origen&order=id.asc`;
   }
   const r = await fetch(url, { headers: { 'Authorization': `Bearer ${KEY}`, 'apikey': KEY } });
   const data = await r.json();
@@ -212,8 +215,9 @@ async function downloadImage(filename, subfolder, type) {
   return Buffer.from(arrayBuffer);
 }
 
-async function uploadToSupabase(imageBuffer) {
-  const name = `esperancita_${Date.now()}.png`;
+async function uploadToSupabase(imageBuffer, marca) {
+  const safeMarca = marca.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const name = `${safeMarca}_i2i_${Date.now()}.png`;
   const r = await fetch(`${SUPA}/storage/v1/object/creatividades/${name}`, {
     method: 'POST',
     headers: {
@@ -228,7 +232,29 @@ async function uploadToSupabase(imageBuffer) {
     throw new Error(`Upload failed: ${r.status} ${err}`);
   }
   const data = await r.json();
-  return `https://fddokyfilokacsjdgiwe.supabase.co/storage/v1/object/public/${data.Key}`;
+  return `${SUPA}/storage/v1/object/public/${data.Key}`;
+}
+
+async function markAsProcessing(id) {
+  const r = await fetch(`${SUPA}/rest/v1/creatividades?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: supaHeaders,
+    body: JSON.stringify({ estado: 'en_proceso' })
+  });
+  if (r.status !== 204) throw new Error(`Mark en_proceso failed: ${r.status}`);
+}
+
+async function markAsError(id, errorMsg) {
+  try {
+    await fetch(`${SUPA}/rest/v1/creatividades?id=eq.${id}`, {
+      method: 'PATCH',
+      headers: supaHeaders,
+      body: JSON.stringify({
+        estado: 'error',
+        observacion: `[auto] ${errorMsg.substring(0, 500)}`
+      })
+    });
+  } catch { /* best effort */ }
 }
 
 async function updateCreatividad(id, imageUrl) {
@@ -248,6 +274,9 @@ async function processOne(creatividad) {
   const { id, prompt, marca, url, origen } = creatividad;
   log(`▶ #${id} [${marca}] [${origen}] — Generando imagen...`);
 
+  // Mark as processing to prevent duplicate pickup
+  await markAsProcessing(id);
+
   const seed = randomSeed();
   const workflow = buildWorkflow(prompt, url, seed);
 
@@ -260,7 +289,7 @@ async function processOne(creatividad) {
   const imageBuffer = await downloadImage(imageInfo.filename, imageInfo.subfolder, imageInfo.type);
   log(`  📥 Descargada (${(imageBuffer.length / 1024 / 1024).toFixed(1)} MB)`);
 
-  const imageUrl = await uploadToSupabase(imageBuffer);
+  const imageUrl = await uploadToSupabase(imageBuffer, marca);
   log(`  ☁️ Subida: ${imageUrl.split('/').pop()}`);
 
   await updateCreatividad(id, imageUrl);
@@ -328,7 +357,15 @@ async function run() {
       await processOne(c);
     } catch (e) {
       log(`❌ #${c.id} Error: ${e.message}`);
+      await markAsError(c.id, e.message);
+      log(`  ⚠️ #${c.id} → estado=error`);
       stats.fail++;
+    }
+
+    // Límite por corrida: máx 4 imágenes (VRAM leak en ComfyUI)
+    if (stats.ok + stats.fail >= MAX_PER_RUN) {
+      log(`🛑 Límite de ${MAX_PER_RUN} imágenes por corrida alcanzado.`);
+      break;
     }
 
     // Pausa de 5s entre imágenes para dejar que ComfyUI se estabilice
