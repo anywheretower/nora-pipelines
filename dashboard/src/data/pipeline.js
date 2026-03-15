@@ -612,6 +612,20 @@ export const pipelines = [
         stateIn: null,
         stateOut: 'para_ejecucion + condicion:requerido',
         description: 'En NORA, el usuario sube un input (foto de producto/colaborador/espacio) y presiona "Sorpréndeme NORA". Esto crea una creatividad en Supabase con estado=para_ejecucion, condicion=requerido, origen según categoría, url con la foto, y campos básicos del input. La creatividad queda SIN prompt — esperando que el skill lo genere.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            creatividades: {
+              insert: [
+                'marca', 'estado → para_ejecucion', 'condicion → requerido',
+                'origen → Producto/Colaborador/Interior/Exterior/Fachada',
+                'url → foto de referencia',
+                'slogan_headline', 'subtitulo', 'cta', 'concepto',
+                'prompt → NULL (lo genera el skill después)',
+              ],
+            },
+          },
+        },
         steps: [
           {
             label: 'Usuario sube input en NORA',
@@ -653,6 +667,14 @@ export const pipelines = [
         stateIn: null,
         stateOut: null,
         description: 'Se lee la ficha de marca, la foto de referencia y datos del producto (si aplica).',
+        supabaseFields: {
+          reads: {
+            marcas: ['ficha', 'arquetipo', 'paleta_colores', 'look_and_feel', 'notas_generales', 'contenido_prohibido', 'logos'],
+            creatividades: ['id', 'marca', 'url', 'origen', 'concepto', 'slogan_headline', 'subtitulo', 'cta'],
+            inputs: ['descripccion (si origen=Producto)'],
+          },
+          writes: {},
+        },
         steps: [
           {
             label: 'Leer identidad de marca',
@@ -690,7 +712,20 @@ export const pipelines = [
         executorDetail: 'nora-creatividad-img2img',
         stateIn: null,
         stateOut: 'para_ejecucion',
-        description: 'Construye prompt de edición (800-1100 chars), escribe textos, extrae estrategia y inserta en Supabase.',
+        description: 'Construye prompt de edición (800-1100 chars), escribe textos, extrae estrategia y actualiza la creatividad existente en Supabase.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            creatividades: {
+              update: [
+                'prompt → instrucción de edición en inglés (800-1100 chars)',
+                'copy', 'descripcion_corta', 'logo',
+                'buyer_persona', 'dolor_anhelo', 'cambio_emocional', 'diferenciador', 'beneficios', 'objeciones_tipicas',
+                'condicion → null (limpia "requerido")',
+              ],
+            },
+          },
+        },
         steps: [
           {
             label: 'Construcción de prompt de edición',
