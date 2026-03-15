@@ -561,7 +561,380 @@ export const pipelines = [
   },
 
   // ============================================================
-  // Pipeline 2: Image-to-Image (Qwen Image Edit 2511)
+  // Pipeline 2: Text-to-Image · Referencia (banco de imágenes)
+  // ============================================================
+  {
+    id: 'text2img-referencia',
+    title: 'Text-to-Image · Referencia',
+    subtitle: 'Imagen inspirada en banco de 160+ referencias etiquetadas',
+    command: '/nora-creatividad-referencia',
+    status: 'activo',
+
+    executionBlocks: [
+      {
+        executor: 'usuario',
+        label: 'Usuario / Cron / Requerimiento',
+        phases: ['activador'],
+        handoff: 'invoca skill',
+      },
+      {
+        executor: 'skill',
+        label: 'Skill: nora-creatividad-referencia',
+        phases: ['lectura', 'procesamiento'],
+        handoff: 'ejecuta script via Bash',
+      },
+      {
+        executor: 'script',
+        label: 'Script: comfy-text2img.mjs',
+        phases: ['ejecucion', 'entrega'],
+        handoff: 'creatividad para_revision',
+      },
+      {
+        executor: 'skill',
+        label: 'QA Automático: nora-imagen-iteracion',
+        phases: ['qa'],
+        optional: true,
+        handoff: null,
+      },
+      {
+        executor: 'skill',
+        label: 'QA Humano: nora-imagen-observacion',
+        phases: ['observacion'],
+        optional: true,
+        handoff: null,
+      },
+    ],
+
+    phases: {
+      activador: {
+        title: 'Trigger: usuario, cron o requerimiento',
+        executor: 'usuario',
+        stateIn: null,
+        stateOut: null,
+        description: 'Se activa por 3 vías: (1) cron automático domingos 21:00 — 3 creatividades por marca activa con refs no usadas; (2) desde tabla requerimientos con estado=referencia y url_ref específica; (3) por pedido directo de Jorge.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Instrucción del usuario / cron',
+            resource: { type: 'usuario', name: 'Terminal Claude Code' },
+            description: 'El usuario indica marca, cantidad e instrucciones opcionales. O el cron ejecuta automáticamente.',
+            details: [
+              'Modo automático: 3 creatividades por marca activa (domingos 21:00)',
+              'Modo requerimiento: url_ref + temática ya definida',
+              'Modo manual: Jorge solicita para marca específica',
+            ],
+          },
+          {
+            label: 'Cargar variables de entorno',
+            resource: { type: 'env', name: '.env' },
+            description: 'Se exportan las variables del archivo .env del proyecto.',
+            details: [
+              'SUPABASE_URL',
+              'SUPABASE_SERVICE_ROLE_KEY',
+              'COMFY_URL',
+            ],
+          },
+        ],
+      },
+
+      lectura: {
+        title: 'Identidad de marca + banco de referencia',
+        executor: 'skill',
+        executorDetail: 'nora-creatividad-referencia',
+        stateIn: null,
+        stateOut: null,
+        description: 'Se hacen 3 queries a Supabase: ficha de marca, creatividades anteriores (para no repetir conceptos ni referencias) y el banco de imágenes de referencia.',
+        supabaseFields: {
+          reads: {
+            marcas: ['ficha', 'arquetipo', 'paleta_colores', 'look_and_feel', 'notas_generales', 'contenido_prohibido', 'logos'],
+            creatividades: ['id', 'concepto', 'slogan_headline', 'subtitulo', 'cta', 'copy', 'prompt', 'url', 'origen'],
+            referencia: ['id', 'url', 'summary', 'prompt', 'etiquetas'],
+          },
+          writes: {},
+        },
+        steps: [
+          {
+            label: 'Leer identidad de marca',
+            resource: { type: 'supabase', name: 'READ marcas', op: 'READ' },
+            description: 'Ficha completa: identidad, paleta, look & feel, restricciones.',
+            filter: 'marca = {marca}',
+            docs: ['SCHEMA.md', 'SUPABASE.md'],
+          },
+          {
+            label: 'Leer creatividades anteriores',
+            resource: { type: 'supabase', name: 'READ creatividades', op: 'READ' },
+            description: 'Creatividades validadas para no repetir conceptos, titulares ni referencias ya usadas.',
+            filter: 'condicion IN (resultado_final, aprobado, para_revision) AND origen IN (referencia, original)',
+          },
+          {
+            label: 'Leer banco de referencias',
+            resource: { type: 'supabase', name: 'READ referencia', op: 'READ' },
+            description: 'Banco de 160+ imágenes etiquetadas por 9 dimensiones (composición, técnica, sujeto, metáfora, emoción, paleta, etc.).',
+            details: [
+              'Cada referencia tiene: url, summary (análisis visual), prompt (prompt base en inglés)',
+              'etiquetas por 9 categorías: composición, técnica, sujeto, metáfora, elementos, emoción, paleta, fondo, categoría',
+              'Criterios de selección: pertinencia, novedad, creatividad',
+            ],
+          },
+        ],
+      },
+
+      procesamiento: {
+        title: 'Concepto + Ref + Prompt + Textos + INSERT',
+        executor: 'skill',
+        executorDetail: 'nora-creatividad-referencia',
+        stateIn: null,
+        stateOut: 'para_ejecucion',
+        description: '5 pasos: seleccionar referencia del banco, idear concepto (skill), construir prompt adaptando la referencia a la marca (prompt-master), escribir textos, insertar en Supabase.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            creatividades: {
+              insert: [
+                'marca', 'estado → para_ejecucion', 'origen → referencia', 'condicion → null',
+                'prompt', 'url → URL imagen de referencia del banco', 'concepto', 'gatillador',
+                'slogan_headline', 'subtitulo', 'cta', 'copy', 'descripcion_corta',
+                'buyer_persona', 'dolor_anhelo', 'cambio_emocional', 'diferenciador', 'beneficios', 'objeciones_tipicas',
+              ],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Seleccionar referencia del banco',
+            resource: { type: 'supabase', name: 'READ referencia', op: 'READ' },
+            description: 'Elige imagen del banco aplicando 3 criterios: pertinencia (relevancia al rubro), novedad (no usada por la marca), creatividad (conexión inesperada).',
+            details: [
+              'Filtrar por etiquetas: composición, técnica, afinidad de rubro',
+              'Verificar que la marca no haya usado esta referencia antes (campo url en creatividades)',
+              'Evaluar compatibilidad usando summary y prompt de la referencia',
+            ],
+          },
+          {
+            label: 'Ideación de concepto',
+            resource: { type: 'skill', name: 'nora-imagen-concepto' },
+            description: '7 motores creativos + 5 filtros de validación, guiados por la referencia seleccionada.',
+          },
+          {
+            label: 'Construcción de prompt',
+            resource: { type: 'skill', name: 'nora-prompt-master' },
+            description: 'Parte del prompt base de la referencia y lo adapta a la marca: paleta, look & feel, arquetipo. 6 bloques, 600-1500 chars, inglés.',
+            details: [
+              'Bloque 1: Calidad y formato (5600K, editorial)',
+              'Bloque 2: Concepto (adaptado de la referencia)',
+              'Bloque 3: Composición espacial (foreground/mid/background)',
+              'Bloque 4: Interacción y narrativa',
+              'Bloque 5: Iluminación, color y efectos (paleta de marca)',
+              'Bloque 6: Negativos y restricciones',
+            ],
+          },
+          {
+            label: 'Textos creativos',
+            resource: { type: 'doc', name: 'GUIA-TEXTOS.md' },
+            description: 'Slogan, subtítulo, CTA y copy en español adaptados a la marca y al concepto visual.',
+          },
+          {
+            label: 'Insertar creatividad',
+            resource: { type: 'supabase', name: 'INSERT creatividades', op: 'INSERT' },
+            description: 'Creatividad completa con prompt, URL de referencia y campos de estrategia. Lista para ComfyUI.',
+            details: [
+              'Técnicos: marca, estado, origen, prompt, gatillador',
+              'Textos: concepto, slogan_headline, subtitulo, cta, copy, descripcion_corta',
+              'Estrategia: buyer_persona, dolor_anhelo, cambio_emocional, diferenciador, beneficios, objeciones_tipicas',
+              'url → URL de la imagen de referencia usada (trazabilidad)',
+            ],
+            stateChange: 'NULL → para_ejecucion',
+          },
+        ],
+      },
+
+      ejecucion: {
+        title: 'ComfyUI remoto (PC-2)',
+        executor: 'script',
+        executorDetail: 'comfy-text2img.mjs',
+        stateIn: 'para_ejecucion',
+        stateOut: null,
+        description: 'El script marca la creatividad como en_proceso, envía el workflow a ComfyUI en PC-2, espera resultado por polling HTTP y descarga la imagen. Si falla, marca como error. Usa el mismo script que text2img original.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'prompt', 'marca'],
+          },
+          writes: {
+            creatividades: {
+              update_on_pickup: ['estado → en_proceso'],
+              update_on_error: ['estado → error', 'observacion → [auto] mensaje de error'],
+            },
+          },
+          filters: ['estado = para_ejecucion', 'origen = referencia'],
+        },
+        steps: [
+          {
+            label: 'Leer creatividad pendiente',
+            resource: { type: 'supabase', name: 'READ creatividades', op: 'READ' },
+            description: 'Query a Supabase para obtener creatividades con estado para_ejecucion y origen referencia.',
+            filter: 'estado = para_ejecucion AND origen = referencia',
+          },
+          {
+            label: 'Enviar workflow a ComfyUI',
+            resource: { type: 'script', name: 'comfy-text2img.mjs → POST /prompt' },
+            description: 'Envía workflow Qwen con seed aleatoria al servidor ComfyUI remoto.',
+            details: [
+              'Modelo: Qwen 2.5 VL 7B (GGUF Q4_K_M)',
+              'LoRA: Lightning 4-steps V1.0',
+              'Sampler: euler, scheduler: simple, steps: 15, cfg: 1.5',
+              'Resolución: 1104×1472 (3:4)',
+            ],
+          },
+          {
+            label: 'Esperar generación',
+            resource: { type: 'script', name: 'comfy-text2img.mjs → poll /history' },
+            description: 'Polling cada 3s hasta que aparezca el output en /history.',
+          },
+          {
+            label: 'Descargar imagen',
+            resource: { type: 'script', name: 'comfy-text2img.mjs → GET /view' },
+            description: 'Descarga la imagen generada como buffer vía HTTP.',
+          },
+        ],
+        meta: [
+          { icon: '⚙️', label: 'Hardware', value: 'PC-2: RTX 5080 16GB, 192.168.1.26:8188' },
+          { icon: '⏱️', label: 'Tiempo', value: '~1.5 min/imagen (primera ~2.5 min carga modelo)' },
+          { icon: '⚠️', label: 'Límite', value: 'Máx 4 imágenes por corrida (VRAM leak)' },
+        ],
+      },
+
+      entrega: {
+        title: 'Upload Storage + actualizar creatividad',
+        executor: 'script',
+        executorDetail: 'comfy-text2img.mjs',
+        stateIn: 'para_ejecucion',
+        stateOut: 'ejecutado',
+        description: 'La imagen se sube a Supabase Storage y se actualiza la creatividad con la URL y el nuevo estado.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: ['{marca}_t2i_{timestamp}.png → bucket creatividades'],
+            creatividades: {
+              update: ['link_ren_1 → URL pública imagen', 'estado → ejecutado', 'condicion → para_revision'],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Subir imagen a Storage',
+            resource: { type: 'supabase', name: 'INSERT storage', op: 'INSERT' },
+            description: 'Upload al bucket "creatividades" de Supabase Storage.',
+            details: ['Nombre: {marca}_t2i_{timestamp}.png'],
+          },
+          {
+            label: 'Actualizar creatividad',
+            resource: { type: 'supabase', name: 'UPDATE creatividades', op: 'UPDATE' },
+            description: 'Registra la URL de la imagen y cambia el estado.',
+            details: [
+              'link_ren_1 → URL pública de la imagen',
+              'estado → ejecutado',
+              'condicion → para_revision',
+            ],
+            stateChange: 'para_ejecucion → ejecutado',
+          },
+        ],
+      },
+
+      qa: {
+        title: 'Iteración QA automática',
+        executor: 'skill',
+        executorDetail: 'nora-imagen-iteracion',
+        optional: true,
+        stateIn: 'ejecutado',
+        stateOut: 'ejecutado (iteradas) / sin cambio (pasa)',
+        description: 'Auto-evaluación visual contra 3 dimensiones. Score ≥4.0 pasa con tags. Score <4.0 duplica con prompt ajustado y regenera. Máximo 3 rondas.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'prompt', 'concepto', 'link_ren_1', 'tags', 'origen', 'condicion'],
+            marcas: ['ficha', 'paleta_colores', 'look_and_feel', 'contenido_prohibido'],
+          },
+          writes: {
+            creatividades: {
+              update_on_pass: ['tags → iterado_rN, score:X.X'],
+              insert_on_fail: ['2 nuevas creatividades con prompt corregido, estado → para_ejecucion'],
+            },
+          },
+          filters: ['condicion = para_revision', 'origen IN (original, referencia, universal, requerido, calendario)', 'tags NOT LIKE iterado_r3'],
+        },
+        steps: [
+          {
+            label: 'Seleccionar candidatas',
+            resource: { type: 'supabase', name: 'READ creatividades', op: 'READ' },
+            description: 'Busca creatividades para_revision excluyendo las que agotaron rondas (iterado_r3).',
+            filter: 'condicion = para_revision AND origen = referencia AND tags NOT LIKE iterado_r3',
+          },
+          {
+            label: 'Evaluar imagen (3 dimensiones)',
+            resource: { type: 'skill', name: 'nora-imagen-iteracion' },
+            description: 'Calidad técnica + Coherencia de marca + Impacto publicitario. Score 1-5.',
+          },
+          {
+            label: 'Si PASA: agregar tags',
+            resource: { type: 'supabase', name: 'UPDATE creatividades', op: 'UPDATE' },
+            description: 'Tags de trazabilidad. Condicion permanece para_revision.',
+          },
+          {
+            label: 'Si NO PASA: duplicar + regenerar',
+            resource: { type: 'supabase', name: 'INSERT creatividades ×2', op: 'INSERT' },
+            description: '2 versiones con prompt ajustado. La original no se toca.',
+            stateChange: 'NULL → para_ejecucion (nuevas)',
+          },
+        ],
+        meta: [
+          { icon: '📊', label: 'Umbral', value: 'Score ≥ 4.0 pasa, < 4.0 itera' },
+          { icon: '🔄', label: 'Rondas', value: 'Máx 3 — iterado_r1, r2, r3' },
+        ],
+      },
+
+      observacion: {
+        title: 'Observación humana → corrección',
+        executor: 'skill',
+        executorDetail: 'nora-imagen-observacion',
+        optional: true,
+        manual: true,
+        stateIn: 'observado',
+        stateOut: 'para_ejecucion (nuevas) / para_revision (solo textos)',
+        description: 'Jorge revisa la creatividad en NORA y deja una observación. El skill interpreta el tipo de corrección y actúa. Las creatividades en condicion=observado esperan indefinidamente.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'prompt', 'concepto', 'observacion', 'condicion', 'link_ren_1', 'slogan_headline', 'subtitulo', 'cta', 'copy'],
+            marcas: ['ficha', 'paleta_colores', 'look_and_feel', 'contenido_prohibido'],
+          },
+          writes: {
+            creatividades: {
+              update_textos: ['slogan_headline', 'subtitulo', 'cta', 'copy', 'concepto', 'descripcion_corta', 'condicion → para_revision'],
+              insert_imagen: ['2 nuevas creatividades con prompt corregido, estado → para_ejecucion'],
+            },
+          },
+          filters: ['observacion NOT NULL', 'condicion = observado'],
+        },
+        steps: [
+          {
+            label: 'Detectar + interpretar observación',
+            resource: { type: 'skill', name: 'nora-imagen-observacion' },
+            description: 'Clasifica tipo de cambio y actúa según corresponda.',
+          },
+          {
+            label: 'Duplicar o editar según tipo',
+            resource: { type: 'supabase', name: 'INSERT/UPDATE creatividades', op: 'INSERT' },
+            description: 'Si imagen: duplica 2 versiones. Si solo textos: edita directo.',
+          },
+        ],
+        meta: [
+          { icon: '⚡', label: 'Comando', value: '/nora-imagen-observacion' },
+          { icon: '👁️', label: 'Trigger', value: 'Jorge deja observación en NORA → condicion=observado' },
+        ],
+      },
+    },
+  },
+
+  // ============================================================
+  // Pipeline 3: Image-to-Image · Edición (Qwen Image Edit 2511)
   // ============================================================
   {
     id: 'img2img',
