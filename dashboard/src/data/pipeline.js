@@ -2205,7 +2205,7 @@ export const pipelines = [
         executorDetail: 'upscale-ugc.mjs',
         stateIn: 'base_lista + aprobado',
         stateOut: 'base_lista (video reemplazado)',
-        description: 'Spatial upscaler x2 en latent space + refine 3 steps. Output: 1080×1920. Timeout: 40 min. Detección de hang por GPU idle.',
+        description: 'Spatial upscaler x2 en latent space (sin refine, preserva video aprobado). Output: 1080×1920.',
         supabaseFields: {
           reads: {
             creatividades: ['id', 'marca', 'url', 'link_ren_2'],
@@ -2226,12 +2226,11 @@ export const pipelines = [
           {
             label: 'Enviar workflow de upscale',
             resource: { type: 'script', name: 'upscale-ugc.mjs → POST /prompt' },
-            description: 'LoadLatent → LTXVLatentUpsampler x2 → refine 3 steps → VAEDecodeTiled.',
+            description: 'LoadLatent → LTXVLatentUpsampler x2 → VAEDecodeTiled (sin refine, preserva video).',
             details: [
               'Spatial upscaler: ltx-2.3-spatial-upscaler-x2-1.0',
-              'Refine: euler_cfg_pp, 3 steps, sigmas 0.85→0.0',
-              'Prompts vacíos (el latent ya tiene la info visual)',
-              'Seed: random (diferente al stage 1)',
+              'Sin refine steps (eliminados para preservar video aprobado)',
+              'Modelos: solo VAE + upscaler + audio (sin unet/lora/clip)',
             ],
           },
           {
@@ -2248,8 +2247,9 @@ export const pipelines = [
         ],
         meta: [
           { icon: '⚙️', label: 'Hardware', value: 'PC-2: RTX 5080 16GB' },
-          { icon: '⏱️', label: 'Tiempo', value: '~15-25 min/video según duración (10s→15min, 17s→25min)' },
+          { icon: '⏱️', label: 'Tiempo', value: '~2 min (sin refine, solo spatial x2 + decode)' },
           { icon: '🛡️', label: 'Hang detection', value: 'GPU check cada 2 min, aborta tras 6 min idle (0% GPU)' },
+          { icon: '✅', label: 'Preserva video', value: 'Sin refine steps — el video upscaleado es idéntico al base aprobado' },
           { icon: '📐', label: 'Resolución', value: '576×1024 → 1152×2048 → 1080×1920' },
         ],
       },

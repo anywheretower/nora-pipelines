@@ -82,50 +82,27 @@ function buildWorkflow(latentFilename, audioFilename, audioDuration, seed) {
   const FPS = 24;
   const w = {};
 
-  // === MODELS ===
-  w["100"] = { inputs: { unet_name: "ltx-2-3-22b-dev-Q4_K_M.gguf" }, class_type: "UnetLoaderGGUF" };
-  w["101"] = { inputs: { lora_name: "ltx-2.3-22b-distilled-lora-384.safetensors", strength_model: 0.5, model: ["100", 0] }, class_type: "LoraLoaderModelOnly" };
+  // === MODELS (solo VAE + upscaler + audio — sin unet/lora/clip, no hay refine) ===
   w["102"] = { inputs: { vae_name: "LTX23_video_vae_bf16.safetensors" }, class_type: "VAELoader" };
   w["103"] = { inputs: { ckpt_name: "LTX23_audio_vae_bf16.safetensors" }, class_type: "LTXVAudioVAELoader" };
-  w["104"] = { inputs: { clip_name1: "gemma-3-12b-it-IQ4_XS.gguf", clip_name2: "ltx-2.3_text_projection_bf16.safetensors", type: "ltxv" }, class_type: "DualCLIPLoaderGGUF" };
   w["105"] = { inputs: { model_name: "MelBandRoformer_fp32.safetensors" }, class_type: "MelBandRoFormerModelLoader" };
   w["106"] = { inputs: { model_name: "ltx-2.3-spatial-upscaler-x2-1.0.safetensors" }, class_type: "LatentUpscaleModelLoader" };
 
   // === LOAD VIDEO LATENT from stage 1 (only video, no AV) ===
   w["300"] = { inputs: { latent: latentFilename }, class_type: "LoadLatent" };
 
-  // === RE-ENCODE AUDIO (needed for AV concat) ===
+  // === RE-ENCODE AUDIO ===
   w["310"] = { inputs: { audio: audioFilename }, class_type: "LoadAudio" };
   w["311"] = { inputs: { start_index: 0, duration: audioDuration, audio: ["310", 0] }, class_type: "TrimAudioDuration" };
   w["312"] = { inputs: { model: ["105", 0], audio: ["311", 0] }, class_type: "MelBandRoFormerSampler" };
   w["313"] = { inputs: { audio: ["312", 0], audio_vae: ["103", 0] }, class_type: "LTXVAudioVAEEncode" };
-  w["314"] = { inputs: { samples: ["313", 0], mask: ["315", 0] }, class_type: "SetLatentNoiseMask" };
-  w["315"] = { inputs: { value: 0.0, width: 1, height: 1 }, class_type: "SolidMask" };
 
-  // === TEXT (empty — latent already has visual info) ===
-  w["200"] = { inputs: { text: "", clip: ["104", 0] }, class_type: "CLIPTextEncode" };
-  w["201"] = { inputs: { text: "", clip: ["104", 0] }, class_type: "CLIPTextEncode" };
-  w["202"] = { inputs: { positive: ["200", 0], negative: ["201", 0], frame_rate: FPS }, class_type: "LTXVConditioning" };
-
-  // === UPSCALE video latent x2 ===
+  // === UPSCALE video latent x2 (spatial only, NO refine — preserves approved video) ===
   w["500"] = { inputs: { samples: ["300", 0], upscale_model: ["106", 0], vae: ["102", 0] }, class_type: "LTXVLatentUpsampler" };
 
-  // Concat upscaled video + re-encoded audio latent
-  w["520"] = { inputs: { video_latent: ["500", 0], audio_latent: ["314", 0] }, class_type: "LTXVConcatAVLatent" };
-
-  // === STAGE 2: Refine 3 steps ===
-  w["600"] = { inputs: { noise_seed: seed }, class_type: "RandomNoise" };
-  w["601"] = { inputs: { model: ["101", 0], positive: ["202", 0], negative: ["202", 1], cfg: 1.0 }, class_type: "CFGGuider" };
-  w["602"] = { inputs: { sampler_name: "euler_cfg_pp" }, class_type: "KSamplerSelect" };
-  w["603"] = { inputs: { sigmas: "0.85, 0.7250, 0.4219, 0.0" }, class_type: "ManualSigmas" };
-  w["604"] = { inputs: { noise: ["600", 0], guider: ["601", 0], sampler: ["602", 0], sigmas: ["603", 0], latent_image: ["520", 0] }, class_type: "SamplerCustomAdvanced" };
-
-  // Separate stage 2
-  w["610"] = { inputs: { av_latent: ["604", 0] }, class_type: "LTXVSeparateAVLatent" };
-
-  // === DECODE ===
-  w["700"] = { inputs: { samples: ["610", 0], vae: ["102", 0], tile_size: 512, overlap: 64, temporal_size: 512, temporal_overlap: 4 }, class_type: "VAEDecodeTiled" };
-  w["701"] = { inputs: { samples: ["610", 1], audio_vae: ["103", 0] }, class_type: "LTXVAudioVAEDecode" };
+  // === DECODE (direct from upscaled latent, no refine steps) ===
+  w["700"] = { inputs: { samples: ["500", 0], vae: ["102", 0], tile_size: 512, overlap: 64, temporal_size: 512, temporal_overlap: 4 }, class_type: "VAEDecodeTiled" };
+  w["701"] = { inputs: { samples: ["313", 0], audio_vae: ["103", 0] }, class_type: "LTXVAudioVAEDecode" };
 
   // === OUTPUT ===
   w["800"] = {
