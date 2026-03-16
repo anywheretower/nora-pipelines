@@ -1638,7 +1638,7 @@ export const pipelines = [
       },
       {
         executor: 'script',
-        label: 'Script: comfy-img2img.mjs --res=1920x1080',
+        label: 'Script: comfy-img2img.mjs --res=1920x1080 --upscale',
         phases: ['ejecucion', 'entrega'],
         handoff: 'creatividad para_revision',
       },
@@ -1732,7 +1732,7 @@ export const pipelines = [
         executorDetail: 'nora-creatividad-pantalla',
         stateIn: 'para_procesamiento',
         stateOut: 'para_ejecucion',
-        description: 'Adapta el prompt de edición para que Qwen rellene los espacios blancos laterales del pad con el entorno descrito. La foto se centrará en un canvas 1920×1080 con padding blanco, y Qwen genera el contenido de los bordes.',
+        description: 'Adapta el prompt de edición para que Qwen rellene los espacios blancos laterales del pad con el entorno descrito. La foto se cropea al alto del canvas 16:9 (928px) sin redimensionar, se centra en canvas 1664×928 (resolución oficial Qwen, ambos ÷16) con padding blanco, Qwen genera el contenido de los bordes, y ESRGAN x4 upscalea a 1920×1080.',
         supabaseFields: {
           reads: {},
           writes: {
@@ -1751,7 +1751,7 @@ export const pipelines = [
             resource: { type: 'skill', name: 'nora-creatividad-pantalla' },
             description: 'Reescribe el prompt para que Qwen rellene las zonas blancas laterales del pad con entorno coherente.',
             details: [
-              'La foto se centra en canvas 1920×1080 con pad blanco',
+              'La foto se cropea a 928px de alto (sin resize) y se centra en canvas 1664×928 con pad blanco',
               'Qwen interpreta los blancos como áreas a rellenar',
               'El prompt describe el entorno a extender lateralmente',
               'Mantener la persona/producto intacta en el centro',
@@ -1772,12 +1772,12 @@ export const pipelines = [
       },
 
       ejecucion: {
-        title: 'ComfyUI remoto — img2img 1920×1080 con pad',
+        title: 'ComfyUI remoto — crop+pad 1664×928 → ESRGAN x4 → 1920×1080',
         executor: 'script',
-        executorDetail: 'comfy-img2img.mjs --res=1920x1080',
+        executorDetail: 'comfy-img2img.mjs --res=1920x1080 --upscale',
         stateIn: 'para_ejecucion',
         stateOut: null,
-        description: 'Script comfy-img2img.mjs con --res=1920x1080. La foto se centra en canvas blanco 1920×1080, Qwen edita rellenando los espacios blancos con el entorno del prompt.',
+        description: 'Script comfy-img2img.mjs con --res=1920x1080 --upscale. La foto se cropea a 928px de alto (sin resize), se centra en canvas 1664×928 (resolución oficial Qwen ÷16) con pad blanco, Qwen edita rellenando los espacios blancos, luego ESRGAN x4 upscalea a 6656×3712 y se redimensiona a 1920×1080 final.',
         supabaseFields: {
           reads: {
             creatividades: ['id', 'prompt', 'marca', 'url'],
@@ -1798,15 +1798,19 @@ export const pipelines = [
             filter: 'estado = para_ejecucion AND origen = Pantalla AND url NOT NULL',
           },
           {
-            label: 'Pad + enviar workflow a ComfyUI',
-            resource: { type: 'script', name: 'comfy-img2img.mjs --res=1920x1080 → POST /prompt' },
-            description: 'Centra foto en canvas blanco 1920×1080 (ImageResizeKJv2 pad) y edita con Qwen.',
+            label: 'Crop + pad 1664×928 + Qwen edit + ESRGAN x4 → 1920×1080',
+            resource: { type: 'script', name: 'comfy-img2img.mjs --res=1920x1080 --upscale → POST /prompt' },
+            description: 'Cropea foto a 928px de alto, centra en canvas 1664×928 con pad blanco, Qwen edita, ESRGAN x4 upscalea, resize lanczos a 1920×1080.',
             details: [
               'Nodo 141: LoadImage (foto original)',
-              'Nodo 140: ImageResizeKJv2 pad white → 1920×1080',
+              'Nodo 139: ImageResizeKJv2 crop center → {ancho_original}×928 (sin resize)',
+              'Nodo 140: ImageResizeKJv2 pad white → 1664×928',
               'Nodo 104/113: TextEncodeQwenImageEdit (apunta a nodo padded)',
               'Nodo 109: VAEEncode (apunta a nodo padded)',
               'Modelo: Qwen Image Edit (fp8) + Lightning LoRA 4-steps',
+              'Nodo 150: UpscaleModelLoader → ESRGAN_4x.pth',
+              'Nodo 151: ImageUpscaleWithModel x4 → 6656×3712',
+              'Nodo 152: ImageResizeKJv2 lanczos → 1920×1080 final',
             ],
           },
           {
@@ -1823,7 +1827,7 @@ export const pipelines = [
         meta: [
           { icon: '⚙️', label: 'Hardware', value: 'PC-2: RTX 5080 16GB, 192.168.1.26:8188' },
           { icon: '⏱️', label: 'Tiempo', value: '~2 min/imagen (img2img 4 steps)' },
-          { icon: '📐', label: 'Resolución', value: '1920×1080 (16:9, pad blanco + Qwen fill)' },
+          { icon: '📐', label: 'Resolución', value: 'crop+pad 1664×928 → ESRGAN x4 → 1920×1080' },
         ],
       },
 

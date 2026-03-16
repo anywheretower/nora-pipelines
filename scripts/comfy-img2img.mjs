@@ -2,11 +2,12 @@
  * NORA — Imagen a Imagen (Qwen Image Edit 2511)
  * Genera imagen editada vía ComfyUI remoto (PC-2), sube a Supabase Storage, actualiza registro.
  *
- * Uso: node comfy-img2img.mjs [--once] [--id=123] [--max=4] [--res=1920x1080]
+ * Uso: node comfy-img2img.mjs [--once] [--id=123] [--max=4] [--res=1920x1080] [--upscale]
  *   --once       Procesa lo pendiente y sale (no hace polling)
  *   --id=123     Procesa solo esa creatividad
  *   --max=N      Máximo N imágenes por corrida (default: 4, por VRAM leak)
  *   --res=WxH    Resolución con pad blanco (para pantalla 16:9)
+ *   --upscale    Crop input + pad 1664×928 + ESRGAN x4 + resize final (mejor calidad)
  */
 
 // --- Load .env from project root ---
@@ -56,10 +57,18 @@ const maxArg = args.find(a => a.startsWith('--max='));
 const MAX_PER_RUN = maxArg ? parseInt(maxArg.split('=')[1]) : 4; // VRAM leak safety
 const resArg = args.find(a => a.startsWith('--res='));
 const [IMG_W, IMG_H] = resArg ? resArg.split('=')[1].split('x').map(Number) : [0, 0];
+const upscale = args.includes('--upscale');
 
 function log(msg) {
   const ts = new Date().toLocaleTimeString('es-CL', { hour12: false });
   console.log(`[${ts}] ${msg}`);
+}
+
+async function getImageDimensions(imageUrl) {
+  const r = await fetch(imageUrl, { headers: { 'Range': 'bytes=0-31' } });
+  const buf = Buffer.from(await r.arrayBuffer());
+  // PNG header: width at offset 16, height at offset 20 (32-bit big-endian)
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
 }
 
 function randomSeed() {
@@ -68,7 +77,7 @@ function randomSeed() {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function buildWorkflow(prompt, imageUrl, seed) {
+function buildWorkflow(prompt, imageUrl, seed, imgDims) {
   // When --res is set, insert a padding node between LoadImage and the rest
   const imgSource = IMG_W ? ["140", 0] : ["141", 0];
 
@@ -160,21 +169,78 @@ function buildWorkflow(prompt, imageUrl, seed) {
 
   // Pad node: center original image on white canvas at target resolution
   if (IMG_W) {
+    let padW = IMG_W, padH = IMG_H;
+    let padSource = ["141", 0];
+
+    if (upscale && imgDims) {
+      // Canvas 16:9 resolución oficial Qwen (ambos ÷16)
+      padW = 1664;
+      padH = 928;
+
+      // Si el input es más alto que el canvas, crop center (sin resize)
+      if (imgDims.height > padH) {
+        workflow.prompt["139"] = {
+          inputs: {
+            width: imgDims.width, height: padH,
+            upscale_method: "nearest-exact",
+            keep_proportion: "crop",
+            pad_color: "255, 255, 255",
+            crop_position: "center",
+            divisible_by: 2,
+            device: "cpu",
+            image: ["141", 0]
+          },
+          class_type: "ImageResizeKJv2",
+          _meta: { title: "Crop to canvas height" }
+        };
+        padSource = ["139", 0];
+      }
+    }
+
     workflow.prompt["140"] = {
       inputs: {
-        width: IMG_W,
-        height: IMG_H,
+        width: padW,
+        height: padH,
         upscale_method: "nearest-exact",
         keep_proportion: "pad",
         pad_color: "255, 255, 255",
         crop_position: "center",
         divisible_by: 2,
         device: "cpu",
-        image: ["141", 0]
+        image: padSource
       },
       class_type: "ImageResizeKJv2",
       _meta: { title: "Pad to target resolution" }
     };
+  }
+
+  // Upscale: ESRGAN x4 → resize lanczos a resolución final
+  if (upscale && IMG_W) {
+    workflow.prompt["150"] = {
+      inputs: { model_name: "ESRGAN_4x.pth" },
+      class_type: "UpscaleModelLoader",
+      _meta: { title: "Load ESRGAN_4x" }
+    };
+    workflow.prompt["151"] = {
+      inputs: { upscale_model: ["150", 0], image: ["107", 0] },
+      class_type: "ImageUpscaleWithModel",
+      _meta: { title: "Upscale x4" }
+    };
+    workflow.prompt["152"] = {
+      inputs: {
+        width: IMG_W, height: IMG_H,
+        upscale_method: "lanczos",
+        keep_proportion: "resize",
+        pad_color: "0, 0, 0",
+        crop_position: "center",
+        divisible_by: 2,
+        device: "cpu",
+        image: ["151", 0]
+      },
+      class_type: "ImageResizeKJv2",
+      _meta: { title: "Resize to final resolution" }
+    };
+    workflow.prompt["60"].inputs.images = ["152", 0];
   }
 
   return workflow;
@@ -304,8 +370,15 @@ async function processOne(creatividad) {
   // Mark as processing to prevent duplicate pickup
   await markAsProcessing(id);
 
+  let imgDims = null;
+  if (upscale && IMG_W) {
+    imgDims = await getImageDimensions(url);
+    const cW = 1664, cH = 928;
+    log(`  📐 Input: ${imgDims.width}×${imgDims.height} → crop ${imgDims.width}×${cH} → pad ${cW}×${cH}`);
+  }
+
   const seed = randomSeed();
-  const workflow = buildWorkflow(prompt, url, seed);
+  const workflow = buildWorkflow(prompt, url, seed, imgDims);
 
   const promptId = await queuePrompt(workflow);
   log(`  ⏳ Queued (${promptId.substring(0, 8)}...) seed=${seed}`);
