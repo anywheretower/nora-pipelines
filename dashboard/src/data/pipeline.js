@@ -2205,7 +2205,7 @@ export const pipelines = [
         executorDetail: 'upscale-ugc.mjs',
         stateIn: 'base_lista + aprobado',
         stateOut: 'base_lista (video reemplazado)',
-        description: 'Tras aprobación humana del video base: spatial upscaler x2 en latent space + refine 3 steps. Output: 1080×1920.',
+        description: 'Spatial upscaler x2 en latent space + refine 3 steps. Output: 1080×1920. Timeout: 40 min. Detección de hang por GPU idle.',
         supabaseFields: {
           reads: {
             creatividades: ['id', 'marca', 'url', 'link_ren_2'],
@@ -2248,7 +2248,8 @@ export const pipelines = [
         ],
         meta: [
           { icon: '⚙️', label: 'Hardware', value: 'PC-2: RTX 5080 16GB' },
-          { icon: '⏱️', label: 'Tiempo', value: '~7 min/video (upscale + refine)' },
+          { icon: '⏱️', label: 'Tiempo', value: '~15-25 min/video según duración (10s→15min, 17s→25min)' },
+          { icon: '🛡️', label: 'Hang detection', value: 'GPU check cada 2 min, aborta tras 6 min idle (0% GPU)' },
           { icon: '📐', label: 'Resolución', value: '576×1024 → 1152×2048 → 1080×1920' },
         ],
       },
@@ -2259,7 +2260,7 @@ export const pipelines = [
         executorDetail: 'postprod-ugc.mjs',
         stateIn: 'aprobado',
         stateOut: null,
-        description: 'Tras aprobación humana: transcribir audio (Whisper CUDA), render Remotion dual (9:16 + 4:5) con subtítulos karaoke y pack de cierre.',
+        description: 'Tras aprobación humana: transcribir audio (Whisper CUDA), render Remotion dual (9:16 + 4:5) con subtítulos karaoke y pack de cierre. Flags: --subs-bottom, --no-gradient, --remove-words=N.',
         manual: true,
         supabaseFields: {
           reads: {
@@ -2293,11 +2294,15 @@ export const pipelines = [
             resource: { type: 'script', name: 'postprod-ugc.mjs → generateCompositionTsx' },
             description: 'Genera {Marca}UGC{ID}.tsx + Feed.tsx con subtítulos hardcodeados. Actualiza Root.tsx.',
             details: [
-              'Patrón: EquosUGC1875.tsx (no inputProps genéricos)',
-              'Karaoke word-level: ~7 palabras/grupo, 3f gap',
-              'Subs arriba (top: 150px/100px), degradado arriba',
+              'Patrón: {Marca}UGC{ID}.tsx (no inputProps genéricos)',
+              'Karaoke word-level: ~5 palabras/grupo, 3f gap',
+              'Font: 72px (9:16), 60px (4:5) — Montserrat 700',
+              'Posición subs: --subs-bottom (bottom: 280/200) o top (150/100)',
+              '--no-gradient: sin degradado detrás de subs',
+              '--remove-words=N: eliminar palabras de Whisper por índice',
+              'Whisper fixes: mapa WHISPER_FIXES para errores comunes (paddle→pádel, Centra→Cemtra)',
               'Poster frame: frame 60, primera frase visible',
-              'Pack de cierre dedicado por marca (--pack arg)',
+              'Pack de cierre: logo + URL por marca (PACK_PROPS), URL 50px',
             ],
           },
           {
@@ -2349,13 +2354,13 @@ export const pipelines = [
           },
           {
             label: 'Upload video 9:16',
-            resource: { type: 'supabase', name: 'INSERT storage', op: 'INSERT' },
-            description: 'creatividades/{marca}_ugc_{ts}_916.mp4 → link_ren_2',
+            resource: { type: 'supabase', name: 'UPSERT storage', op: 'UPSERT' },
+            description: 'creatividades/{marca}_ugc_{id}_916.mp4 → link_ren_2 (PUT x-upsert)',
           },
           {
             label: 'Upload video 4:5',
-            resource: { type: 'supabase', name: 'INSERT storage', op: 'INSERT' },
-            description: 'creatividades/{marca}_ugc_{ts}_45.mp4 → link_ren_1',
+            resource: { type: 'supabase', name: 'UPSERT storage', op: 'UPSERT' },
+            description: 'creatividades/{marca}_ugc_{id}_45.mp4 → link_ren_1 (PUT x-upsert)',
           },
           {
             label: 'Crear creatividad final',

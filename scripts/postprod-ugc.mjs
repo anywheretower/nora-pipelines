@@ -61,7 +61,7 @@ const supaHeaders = {
 // Mismo mapa que Root.tsx — un PackCierre.tsx genérico con props por marca
 const PACK_PROPS = {
   'Equos Seguros': { darkBg: '#1E3A5F', accent: '#40E0D0', accentAlt: '#336666', logoFile: 'equos_logo_2.png', logoWidth: 320, groupOffset: 43, urlText: 'segurosequos.com', musicFile: 'equos_cierre_sting_v2.wav', musicVolume: 0.8 },
-  'Cemtra': { darkBg: '#1A1A1A', accent: '#FD5200', accentAlt: '#F28C28', logoFile: 'cemtra_logo_3.png', logoWidth: 400, urlText: 'cemtra.cl', musicFile: 'cemtra_cierre_sting.wav' },
+  'Cemtra': { darkBg: '#1A1A1A', accent: '#FD5200', accentAlt: '#F28C28', logoFile: 'cemtra_logo_3.png', logoWidth: 650, urlText: 'cemtra.cl', musicFile: 'cemtra_cierre_sting.wav' },
   'Clínica San Javier': { darkBg: '#008ea9', accent: '#a5bf00', accentAlt: '#FFFFFF', logoFile: 'csj_id5_logo3.png', logoWidth: 360, logoGap: 12, lineOffset: -30, groupOffset: 43, urlText: 'clinicasanjavier.cl', musicFile: 'csj_cierre_sting.wav' },
   'RTK': { darkBg: '#0A1628', accent: '#0098CC', accentAlt: '#013C68', logoFile: 'rtk_logo_3.png', logoWidth: 320, urlText: 'rtk.cl', musicFile: 'rtk_cierre_sting.wav' },
   'RedAgrupa': { darkBg: '#FF0000', accent: '#FFFFFF', accentAlt: '#C0282B', logoFile: 'redagrupa_logo_1.png', logoWidth: 300, urlText: 'redagrupa.cl', musicFile: 'redagrupa_cierre_sting.wav' },
@@ -75,9 +75,13 @@ const PACK_PROPS = {
 const args = process.argv.slice(2);
 const idArg = args.find(a => a.startsWith('--id='));
 const creatividadId = idArg ? parseInt(idArg.split('=')[1]) : null;
+const subsBottom = args.includes('--subs-bottom');
+const noGradient = args.includes('--no-gradient');
+const removeWordsArg = args.find(a => a.startsWith('--remove-words='));
+const removeWordIndices = removeWordsArg ? removeWordsArg.split('=')[1].split(',').map(Number) : [];
 
 if (!creatividadId) {
-  console.error('Uso: node postprod-ugc.mjs --id=<ID>');
+  console.error('Uso: node postprod-ugc.mjs --id=<ID> [--subs-bottom] [--no-gradient] [--remove-words=2,5]');
   process.exit(1);
 }
 
@@ -144,21 +148,41 @@ function transcribeWhisper(audioRemotePath) {
   return JSON.parse(jsonContent);
 }
 
-function whisperToSubtitleGroups(whisperJson, fps) {
+// Whisper correction map — fix common transcription errors
+const WHISPER_FIXES = {
+  'paddle.': 'pádel.',
+  'paddle': 'pádel',
+  'Paddle.': 'pádel.',
+  'Paddle': 'pádel',
+  'Centra': 'Cemtra',
+  'centra': 'Cemtra',
+};
+// Words to remove (Whisper hallucinates extra words)
+const WHISPER_REMOVE = new Set();
+
+function whisperToSubtitleGroups(whisperJson, fps, removeWords = []) {
   // Extract all words with frame numbers (dynamic fps)
   const allWords = [];
   for (const segment of whisperJson.segments) {
     if (!segment.words) continue;
     for (const w of segment.words) {
+      let word = w.word.trim();
+      // Apply fixes
+      if (WHISPER_FIXES[word]) word = WHISPER_FIXES[word];
       allWords.push({
-        word: w.word.trim(),
+        word,
         startFrame: Math.round(w.start * fps),
       });
     }
   }
 
-  // Group into blocks of ~6-8 words (matching EquosUGC1875 pattern)
-  const WORDS_PER_GROUP = 7;
+  // Remove specific words by index (e.g. hallucinated "en" at index 2)
+  for (let i = removeWords.length - 1; i >= 0; i--) {
+    allWords.splice(removeWords[i], 1);
+  }
+
+  // Group into blocks of ~5-6 words (fits 3 lines with larger font)
+  const WORDS_PER_GROUP = 5;
   const GAP_FRAMES = 3; // frames between groups
   const groups = [];
 
@@ -203,13 +227,22 @@ function getVideoFps(videoRemotePath) {
 // Step 4: Generate TSX files
 // =============================================================
 
-function generateCompositionTsx(compName, marca, id, groups, videoFile, audioFile, packProps, is45) {
-  const fontSize = is45 ? 40 : 48;
-  const topPos = is45 ? 100 : 150;
+function generateCompositionTsx(compName, marca, id, groups, videoFile, audioFile, packProps, is45, opts = {}) {
+  const fontSize = is45 ? 60 : 72;
   const sideMargin = is45 ? 35 : 45;
-  const gradientHeight = is45 ? '35%' : '40%';
   const objectFit = is45 ? 'objectFit: "cover",' : '';
   const feedSuffix = is45 ? 'Feed' : '';
+
+  // Subtitle position: top (default) or bottom
+  const subsPos = opts.subsBottom
+    ? (is45 ? 'bottom: 200' : 'bottom: 280')
+    : (is45 ? 'top: 100' : 'top: 150');
+  const showGradient = !opts.noGradient;
+  const gradientHeight = is45 ? '35%' : '40%';
+  const gradientPosition = opts.subsBottom ? 'bottom' : 'top';
+  const gradientDirection = opts.subsBottom
+    ? 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 50%, rgba(0,0,0,0) 100%)'
+    : 'linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 50%, rgba(0,0,0,0) 100%)';
 
   const groupsCode = groups.map(g => {
     const wordsStr = g.words.map(w =>
@@ -286,7 +319,7 @@ const KaraokeSubtitle: React.FC<{ group: SubtitleGroup }> = ({ group }) => {
     <div
       style={{
         position: "absolute",
-        top: ${topPos},
+        ${subsPos},
         left: ${sideMargin},
         right: ${sideMargin},
         opacity: blockOpacity,
@@ -372,19 +405,19 @@ export const ${compName}${feedSuffix}: React.FC<${compName}${feedSuffix}Props> =
             muted
             startFrom={posterFrame}
             endAt={posterFrame + 1}
-          />
+          />${showGradient ? `
           <div
             style={{
               position: "absolute",
-              top: 0,
+              ${gradientPosition}: 0,
               left: 0,
               right: 0,
               height: "${gradientHeight}",
-              background: "linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 50%, rgba(0,0,0,0) 100%)",
+              background: "${gradientDirection}",
               pointerEvents: "none",
             }}
-          />
-          <div style={{ position: "absolute", top: ${topPos}, left: ${sideMargin}, right: ${sideMargin} }}>
+          />` : ''}
+          <div style={{ position: "absolute", ${subsPos}, left: ${sideMargin}, right: ${sideMargin} }}>
             <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-start", gap: "3px 8px", lineHeight: 1.15 }}>
 ${posterWordsCode}
             </div>
@@ -399,18 +432,18 @@ ${posterWordsCode}
             src={staticFile(\`videos/\${videoFile}\`)}
             style={{ width: "100%", height: "100%", ${objectFit} }}
             muted
-          />
+          />${showGradient ? `
           <div
             style={{
               position: "absolute",
-              top: 0,
+              ${gradientPosition}: 0,
               left: 0,
               right: 0,
               height: "${gradientHeight}",
-              background: "linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 50%, rgba(0,0,0,0) 100%)",
+              background: "${gradientDirection}",
               pointerEvents: "none",
             }}
-          />
+          />` : ''}
         </AbsoluteFill>
       </Sequence>
 
@@ -522,11 +555,12 @@ async function uploadToStorage(localPath, storageName) {
   const res = await fetch(
     `${SUPA}/storage/v1/object/creatividades/${storageName}`,
     {
-      method: 'POST',
+      method: 'PUT',
       headers: {
         'Authorization': `Bearer ${KEY}`,
         'apikey': ANON,
         'Content-Type': 'video/mp4',
+        'x-upsert': 'true',
       },
       body: fileBuffer,
     }
@@ -618,7 +652,7 @@ async function main() {
 
   // 4. Transcribe with Whisper
   const whisperJson = transcribeWhisper(audioRemote);
-  const groups = whisperToSubtitleGroups(whisperJson, videoFps);
+  const groups = whisperToSubtitleGroups(whisperJson, videoFps, removeWordIndices);
 
   // 5. Get video duration
   const videoFrames = getVideoDurationFrames(videoRemote, videoFps);
@@ -635,8 +669,9 @@ async function main() {
   log(`Pack de cierre: ${finalPackProps.logoFile}`);
 
   // 7. Generate TSX files
-  const tsx916 = generateCompositionTsx(compName, marca, creatividadId, groups, `ugc_${creatividadId}.mp4`, `ugc_${creatividadId}.wav`, finalPackProps, false);
-  const tsx45 = generateCompositionTsx(compName, marca, creatividadId, groups, `ugc_${creatividadId}.mp4`, `ugc_${creatividadId}.wav`, finalPackProps, true);
+  const tsxOpts = { subsBottom, noGradient };
+  const tsx916 = generateCompositionTsx(compName, marca, creatividadId, groups, `ugc_${creatividadId}.mp4`, `ugc_${creatividadId}.wav`, finalPackProps, false, tsxOpts);
+  const tsx45 = generateCompositionTsx(compName, marca, creatividadId, groups, `ugc_${creatividadId}.mp4`, `ugc_${creatividadId}.wav`, finalPackProps, true, tsxOpts);
 
   // Replace duration placeholders
   const tsx916Final = tsx916;

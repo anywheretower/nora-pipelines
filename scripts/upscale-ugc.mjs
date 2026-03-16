@@ -220,14 +220,22 @@ async function uploadAudioToComfyUI(audioBuffer, filename) {
 // SSH helper
 // =============================================================
 
-function ssh(cmd) {
+function ssh(cmd, quiet = false) {
   const fullCmd = `ssh ${SSH_HOST} "${cmd.replace(/"/g, '\\"')}"`;
-  log(`  SSH: ${cmd}`);
+  if (!quiet) log(`  SSH: ${cmd}`);
   return execSync(fullCmd, {
     encoding: 'utf-8',
     timeout: 120000,
     maxBuffer: 10 * 1024 * 1024,
   }).trim();
+}
+
+function checkGpuAlive() {
+  try {
+    const result = ssh('nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader,nounits', true);
+    const [gpuUtil, memUsed] = result.split(',').map(s => parseInt(s.trim()));
+    return { gpuUtil, memUsed, alive: gpuUtil > 2 || memUsed > 3000 };
+  } catch { return { gpuUtil: -1, memUsed: -1, alive: true }; } // assume alive if SSH fails
 }
 
 // =============================================================
@@ -245,11 +253,35 @@ async function queuePrompt(workflow) {
   return data.prompt_id;
 }
 
-async function waitForCompletion(promptId, maxWait = 1200000) {
-  // 20 min timeout for upscale (larger resolution = longer)
+async function waitForCompletion(promptId, maxWait = 2400000) {
+  // 40 min timeout for upscale (longer videos need more time)
   const start = Date.now();
+  let lastGpuCheck = 0;
+  let consecutiveIdle = 0;
+  const GPU_CHECK_INTERVAL = 120000; // check GPU every 2 min
+  const MAX_IDLE_CHECKS = 3; // 3 consecutive idle checks = 6 min idle → hung
+
   while (Date.now() - start < maxWait) {
     await new Promise(r => setTimeout(r, COMFY_POLL));
+
+    // Periodic GPU health check
+    const elapsed = Date.now() - start;
+    if (elapsed - lastGpuCheck > GPU_CHECK_INTERVAL && elapsed > 60000) {
+      lastGpuCheck = elapsed;
+      const gpu = checkGpuAlive();
+      if (!gpu.alive) {
+        consecutiveIdle++;
+        log(`  ⚠️ GPU idle (${gpu.gpuUtil}% util, ${gpu.memUsed}MB VRAM) — ${consecutiveIdle}/${MAX_IDLE_CHECKS}`);
+        if (consecutiveIdle >= MAX_IDLE_CHECKS) {
+          log(`  ⚠️ GPU idle por ${MAX_IDLE_CHECKS * 2} min — ComfyUI probablemente colgado. Revisar output folder.`);
+          throw new Error(`GPU idle for ${MAX_IDLE_CHECKS * 2} min — ComfyUI likely hung. Check output folder on PC-2.`);
+        }
+      } else {
+        consecutiveIdle = 0;
+        log(`  🟢 GPU activa (${gpu.gpuUtil}% util, ${gpu.memUsed}MB VRAM) — ${Math.round(elapsed / 60000)} min`);
+      }
+    }
+
     try {
       const r = await fetch(`${COMFY}/history/${promptId}`);
       const history = await r.json();
@@ -270,7 +302,7 @@ async function waitForCompletion(promptId, maxWait = 1200000) {
         }
       }
     } catch (e) {
-      if (e.message.includes('ComfyUI execution error')) throw e;
+      if (e.message.includes('ComfyUI execution error') || e.message.includes('GPU idle')) throw e;
       // Network error, retry
     }
   }
@@ -328,11 +360,12 @@ async function uploadToSupabase(videoBuffer, marca) {
   const safeMarca = marca.toLowerCase().replace(/[^a-z0-9]/g, '_');
   const name = `${safeMarca}_ugc_upscaled_${Date.now()}.mp4`;
   const r = await fetch(`${SUPA}/storage/v1/object/creatividades/${name}`, {
-    method: 'POST',
+    method: 'PUT',
     headers: {
       'Authorization': `Bearer ${KEY}`,
       'apikey': ANON,
-      'Content-Type': 'video/mp4'
+      'Content-Type': 'video/mp4',
+      'x-upsert': 'true'
     },
     body: videoBuffer
   });
