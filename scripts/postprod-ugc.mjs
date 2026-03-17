@@ -330,7 +330,7 @@ const KaraokeSubtitle: React.FC<{ group: SubtitleGroup }> = ({ group }) => {
           display: "flex",
           flexWrap: "wrap",
           justifyContent: "flex-start",
-          gap: "3px 8px",
+          gap: "3px 18px",
           lineHeight: 1.15,
         }}
       >
@@ -385,12 +385,14 @@ export const ${compName}${feedSuffix}: React.FC<${compName}${feedSuffix}Props> =
   const frame = useCurrentFrame();
   const packStart = videoFrames - crossfadeFrames;
 
-  const videoOpacity = interpolate(
-    frame,
-    [packStart, packStart + crossfadeFrames],
-    [1, 0],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
-  );
+  const videoOpacity = crossfadeFrames > 0
+    ? interpolate(
+        frame,
+        [packStart, packStart + crossfadeFrames],
+        [1, 0],
+        { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+      )
+    : frame < packStart ? 1 : 0;
 
   const posterFrame = 60;
 
@@ -418,7 +420,7 @@ export const ${compName}${feedSuffix}: React.FC<${compName}${feedSuffix}Props> =
             }}
           />` : ''}
           <div style={{ position: "absolute", ${subsPos}, left: ${sideMargin}, right: ${sideMargin} }}>
-            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-start", gap: "3px 8px", lineHeight: 1.15 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-start", gap: "3px 18px", lineHeight: 1.15 }}>
 ${posterWordsCode}
             </div>
           </div>
@@ -448,7 +450,7 @@ ${posterWordsCode}
       </Sequence>
 
       {/* Audio TTS */}
-      <Sequence from={1}>
+      <Sequence from={1} durationInFrames={videoFrames}>
         <Audio src={staticFile(\`audio/\${audioFile}\`)} volume={audioVolume} />
       </Sequence>
 
@@ -623,9 +625,12 @@ async function main() {
   const marcaClean = marca.replace(/[^a-zA-Z0-9]/g, '');
   const compName = `${marcaClean}UGC${creatividadId}`;
   log(`Marca: ${marca}, CompName: ${compName}`);
-  log(`Video: ${crea.link_ren_2 ? 'OK' : 'MISSING'}, Audio: ${crea.url ? 'OK' : 'MISSING'}`);
+  // Prefer link_ren_1 (video base 576p) — Remotion scales to 1080p in a single pass (better quality)
+  // Falls back to link_ren_2 if link_ren_1 is not available
+  const videoSource = crea.link_ren_1 || crea.link_ren_2;
+  log(`Video: ${videoSource ? 'OK' : 'MISSING'} (${crea.link_ren_1 ? 'base' : 'upscaled'}), Audio: ${crea.url ? 'OK' : 'MISSING'}`);
 
-  if (!crea.link_ren_2) throw new Error('Creatividad sin video (link_ren_2)');
+  if (!videoSource) throw new Error('Creatividad sin video (link_ren_1 ni link_ren_2)');
   if (!crea.url) throw new Error('Creatividad sin audio (url)');
 
   // 2. Download video and audio to local temp
@@ -633,7 +638,7 @@ async function main() {
   const audioLocal = join(TEMP_DIR, `ugc_${creatividadId}.wav`);
 
   log('Descargando video...');
-  const videoRes = await fetch(crea.link_ren_2);
+  const videoRes = await fetch(videoSource);
   writeFileSync(videoLocal, Buffer.from(await videoRes.arrayBuffer()));
 
   log('Descargando audio...');
@@ -656,8 +661,8 @@ async function main() {
 
   // 5. Get video duration
   const videoFrames = getVideoDurationFrames(videoRemote, videoFps);
-  const crossfade = 15;
-  const totalFrames = videoFrames + 150 - crossfade + 1; // + poster frame
+  const crossfade = 0;
+  const totalFrames = videoFrames + 150 + 1; // video completo + pack + poster frame
   log(`Video: ${videoFrames} frames (${(videoFrames / videoFps).toFixed(1)}s), total con pack: ${totalFrames}`);
 
   // 6. Get pack props for marca

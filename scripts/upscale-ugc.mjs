@@ -82,7 +82,7 @@ function buildWorkflow(latentFilename, audioFilename, audioDuration, seed) {
   const FPS = 24;
   const w = {};
 
-  // === MODELS (solo VAE + upscaler + audio — sin unet/lora/clip, no hay refine) ===
+  // === MODELS (VAE + upscaler + audio — sin refine) ===
   w["102"] = { inputs: { vae_name: "LTX23_video_vae_bf16.safetensors" }, class_type: "VAELoader" };
   w["103"] = { inputs: { ckpt_name: "LTX23_audio_vae_bf16.safetensors" }, class_type: "LTXVAudioVAELoader" };
   w["105"] = { inputs: { model_name: "MelBandRoformer_fp32.safetensors" }, class_type: "MelBandRoFormerModelLoader" };
@@ -97,10 +97,10 @@ function buildWorkflow(latentFilename, audioFilename, audioDuration, seed) {
   w["312"] = { inputs: { model: ["105", 0], audio: ["311", 0] }, class_type: "MelBandRoFormerSampler" };
   w["313"] = { inputs: { audio: ["312", 0], audio_vae: ["103", 0] }, class_type: "LTXVAudioVAEEncode" };
 
-  // === UPSCALE video latent x2 (spatial only, NO refine — preserves approved video) ===
+  // === UPSCALE video latent x2 (spatial) ===
   w["500"] = { inputs: { samples: ["300", 0], upscale_model: ["106", 0], vae: ["102", 0] }, class_type: "LTXVLatentUpsampler" };
 
-  // === DECODE (direct from upscaled latent, no refine steps) ===
+  // === DECODE (direct from upscaled latent, no refine) ===
   w["700"] = { inputs: { samples: ["500", 0], vae: ["102", 0], tile_size: 512, overlap: 64, temporal_size: 512, temporal_overlap: 4 }, class_type: "VAEDecodeTiled" };
   w["701"] = { inputs: { samples: ["313", 0], audio_vae: ["103", 0] }, class_type: "LTXVAudioVAEDecode" };
 

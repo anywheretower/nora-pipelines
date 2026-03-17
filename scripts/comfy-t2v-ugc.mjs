@@ -180,6 +180,7 @@ async function updateCreatividad(id, videoUrl) {
     headers: supaHeaders,
     body: JSON.stringify({
       estado: 'base_lista',
+      link_ren_1: videoUrl,
       link_ren_2: videoUrl,
       condicion: 'para_revision'
     })
