@@ -60,12 +60,13 @@ const supaHeaders = {
 // --- Pack de cierre props por marca ---
 // Mismo mapa que Root.tsx — un PackCierre.tsx genérico con props por marca
 const PACK_PROPS = {
-  'Equos Seguros': { darkBg: '#1E3A5F', accent: '#40E0D0', accentAlt: '#336666', logoFile: 'equos_logo_2.png', logoWidth: 320, groupOffset: 43, urlText: 'segurosequos.com', musicFile: 'equos_cierre_sting_v2.wav', musicVolume: 0.8 },
+  'Equos Seguros': { darkBg: '#1E3A5F', accent: '#40E0D0', accentAlt: '#336666', logoFile: 'equos_logo_2.png', logoWidth: 500, groupOffset: 43, urlText: 'segurosequos.com', musicFile: 'equos_cierre_sting_v2.wav', musicVolume: 0.8 },
+  'Equos': { darkBg: '#1E3A5F', accent: '#40E0D0', accentAlt: '#336666', logoFile: 'equos_logo_2.png', logoWidth: 500, groupOffset: 43, urlText: 'segurosequos.com', musicFile: 'equos_cierre_sting_v2.wav', musicVolume: 0.8 },
   'Cemtra': { darkBg: '#1A1A1A', accent: '#FD5200', accentAlt: '#F28C28', logoFile: 'cemtra_logo_3.png', logoWidth: 650, urlText: 'cemtra.cl', musicFile: 'cemtra_cierre_sting.wav' },
-  'Clínica San Javier': { darkBg: '#008ea9', accent: '#a5bf00', accentAlt: '#FFFFFF', logoFile: 'csj_id5_logo3.png', logoWidth: 360, logoGap: 12, lineOffset: -30, groupOffset: 43, urlText: 'clinicasanjavier.cl', musicFile: 'csj_cierre_sting.wav' },
-  'RTK': { darkBg: '#0A1628', accent: '#0098CC', accentAlt: '#013C68', logoFile: 'rtk_logo_3.png', logoWidth: 320, urlText: 'rtk.cl', musicFile: 'rtk_cierre_sting.wav' },
-  'RedAgrupa': { darkBg: '#FF0000', accent: '#FFFFFF', accentAlt: '#C0282B', logoFile: 'redagrupa_logo_1.png', logoWidth: 300, urlText: 'redagrupa.cl', musicFile: 'redagrupa_cierre_sting.wav' },
-  'Meser': { darkBg: '#1E3A5F', accent: '#00BCD4', accentAlt: '#6EC6F5', logoFile: 'meser_logo_2.png', logoWidth: 300, urlText: 'meser.cl', musicFile: 'meser_cierre_sting.wav' },
+  'Clínica San Javier': { darkBg: '#008ea9', accent: '#a5bf00', accentAlt: '#FFFFFF', logoFile: 'csj_id5_logo3.png', logoWidth: 620, logoGap: 12, lineOffset: -30, groupOffset: 45, urlText: 'clinicasanjavier.cl', musicFile: 'csj_cierre_sting.wav' },
+  'RTK': { darkBg: '#0A1628', accent: '#0098CC', accentAlt: '#013C68', logoFile: 'rtk_logo_3.png', logoWidth: 500, urlText: 'rtk.cl', musicFile: 'rtk_cierre_sting.wav' },
+  'RedAgrupa': { darkBg: '#FF0000', accent: '#FFFFFF', accentAlt: '#C0282B', logoFile: 'redagrupa_logo_1.png', logoWidth: 500, urlText: 'redagrupa.cl', musicFile: 'redagrupa_cierre_sting.wav' },
+  'Meser': { darkBg: '#1E3A5F', accent: '#00BCD4', accentAlt: '#6EC6F5', logoFile: 'meser_logo_2.png', logoWidth: 500, urlText: 'meser.cl', musicFile: 'meser_cierre_sting.wav' },
   'Solkinest': { darkBg: '#4BA8B5', accent: '#D4A820', accentAlt: '#D4A820', logoFile: 'solkinest_logo_text.png', logoWidth: 320, urlText: 'solkinest.cl', musicFile: 'solkinest_cierre_sting.wav' },
   'Buses Altas Cumbres': { darkBg: '#002284', accent: '#F6C200', accentAlt: '#002284', logoFile: 'bac_square_white.png', logoWidth: 320, urlText: 'busesaltascumbres.cl', musicFile: 'bac_cierre_synth_v2b.wav' },
   'La Reserva': { darkBg: '#2A9D8F', accent: '#7EDDD3', accentAlt: '#FFFFFF', logoFile: 'lareserva_logo_2.png', logoWidth: 320, urlText: '@lareserva.lago', musicFile: 'lareserva_cierre_sting.wav' },
@@ -156,6 +157,10 @@ const WHISPER_FIXES = {
   'Paddle': 'pádel',
   'Centra': 'Cemtra',
   'centra': 'Cemtra',
+  'echo': 'Equos',
+  'Echo': 'Equos',
+  'echo.': 'Equos.',
+  'Echo.': 'Equos.',
 };
 // Words to remove (Whisper hallucinates extra words)
 const WHISPER_REMOVE = new Set();
@@ -241,8 +246,8 @@ function generateCompositionTsx(compName, marca, id, groups, videoFile, audioFil
   const gradientHeight = is45 ? '35%' : '40%';
   const gradientPosition = opts.subsBottom ? 'bottom' : 'top';
   const gradientDirection = opts.subsBottom
-    ? 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 50%, rgba(0,0,0,0) 100%)'
-    : 'linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 50%, rgba(0,0,0,0) 100%)';
+    ? 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0) 100%)'
+    : 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0) 100%)';
 
   const groupsCode = groups.map(g => {
     const wordsStr = g.words.map(w =>
