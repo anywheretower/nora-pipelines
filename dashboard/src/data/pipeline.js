@@ -1938,13 +1938,7 @@ export const pipelines = [
         executor: 'usuario',
         label: 'Revisión humana',
         phases: ['observacion'],
-        handoff: 'aprueba creatividad → upscale',
-      },
-      {
-        executor: 'script',
-        label: 'Script: upscale-ugc.mjs',
-        phases: ['upscale'],
-        handoff: 'video upscaleado → post-producción',
+        handoff: 'aprueba creatividad → post-producción',
       },
       {
         executor: 'script',
@@ -2199,80 +2193,25 @@ export const pipelines = [
         ],
       },
 
-      upscale: {
-        title: 'Upscale Latent (Stage 1.5)',
-        executor: 'script',
-        executorDetail: 'upscale-ugc.mjs',
-        stateIn: 'base_lista + aprobado',
-        stateOut: 'base_lista (video reemplazado)',
-        description: 'Spatial upscaler x2 en latent space (sin refine, preserva video aprobado). Output: 1080×1920.',
-        supabaseFields: {
-          reads: {
-            creatividades: ['id', 'marca', 'url', 'link_ren_2'],
-          },
-          writes: {
-            storage: ['{marca}_ugc_upscaled_{timestamp}.mp4 → bucket creatividades'],
-            creatividades: {
-              update: ['link_ren_2 → URL video upscaleado 1080×1920 con audio'],
-            },
-          },
-        },
-        steps: [
-          {
-            label: 'Copiar latent a ComfyUI/input',
-            resource: { type: 'script', name: 'upscale-ugc.mjs → ssh copy' },
-            description: 'Copia ugc_{id}_latent.safetensors de output/ a input/ en PC-2.',
-          },
-          {
-            label: 'Enviar workflow de upscale',
-            resource: { type: 'script', name: 'upscale-ugc.mjs → POST /prompt' },
-            description: 'LoadLatent → LTXVLatentUpsampler x2 → VAEDecodeTiled (sin refine, preserva video).',
-            details: [
-              'Spatial upscaler: ltx-2.3-spatial-upscaler-x2-1.0',
-              'Sin refine steps (eliminados para preservar video aprobado)',
-              'Modelos: solo VAE + upscaler + audio (sin unet/lora/clip)',
-            ],
-          },
-          {
-            label: 'ffmpeg resize + merge audio',
-            resource: { type: 'script', name: 'upscale-ugc.mjs → ffmpeg' },
-            description: '1152×2048 → 1080×1920 (lanczos) + merge audio Cartesia.',
-          },
-          {
-            label: 'Reemplazar video en Storage',
-            resource: { type: 'supabase', name: 'INSERT storage + UPDATE creatividades', op: 'UPDATE' },
-            description: 'Sube video upscaleado y actualiza link_ren_2.',
-            stateChange: 'link_ren_2 reemplazado',
-          },
-        ],
-        meta: [
-          { icon: '⚙️', label: 'Hardware', value: 'PC-2: RTX 5080 16GB' },
-          { icon: '⏱️', label: 'Tiempo', value: '~2 min (sin refine, solo spatial x2 + decode)' },
-          { icon: '🛡️', label: 'Hang detection', value: 'GPU check cada 2 min, aborta tras 6 min idle (0% GPU)' },
-          { icon: '✅', label: 'Preserva video', value: 'Sin refine steps — el video upscaleado es idéntico al base aprobado' },
-          { icon: '📐', label: 'Resolución', value: '576×1024 → 1152×2048 → 1080×1920' },
-        ],
-      },
-
       postprod: {
         title: 'Post-producción Remotion (Whisper + subs + pack)',
         executor: 'script',
         executorDetail: 'postprod-ugc.mjs',
         stateIn: 'aprobado',
         stateOut: null,
-        description: 'Tras aprobación humana: transcribir audio (Whisper CUDA), render Remotion dual (9:16 + 4:5) con subtítulos karaoke y pack de cierre. Flags: --subs-bottom, --no-gradient, --remove-words=N.',
+        description: 'Tras aprobación humana: descarga video base 576p, Remotion escala a 1080p directo (1 compresión). Transcribe audio (Whisper CUDA), render dual (9:16 + 4:5) con subtítulos karaoke y pack de cierre. Flags: --subs-bottom, --no-gradient, --remove-words=N.',
         manual: true,
         supabaseFields: {
           reads: {
-            creatividades: ['id', 'marca', 'link_ren_2', 'url', 'prompt', 'concepto', 'copy', 'slogan_headline'],
+            creatividades: ['id', 'marca', 'link_ren_1', 'link_ren_2', 'url', 'prompt', 'concepto', 'copy', 'slogan_headline'],
           },
           writes: {},
         },
         steps: [
           {
-            label: 'Descargar video + audio',
+            label: 'Descargar video base + audio',
             resource: { type: 'script', name: 'postprod-ugc.mjs → fetch' },
-            description: 'Descarga video (link_ren_1) y audio (url) de Supabase a Mac local.',
+            description: 'Descarga video base 576p (link_ren_1, fallback link_ren_2) y audio (url). Remotion escala a 1080p en render.',
           },
           {
             label: 'Copiar assets a PC-2',
@@ -2320,6 +2259,9 @@ export const pipelines = [
           { icon: '⚙️', label: 'Hardware', value: 'PC-2: RTX 5080 16GB (Whisper CUDA + Remotion)' },
           { icon: '⏱️', label: 'Tiempo', value: '~3-5 min (whisper ~30s + 2 renders ~2min c/u)' },
           { icon: '🎬', label: 'Output', value: '2 videos: 1080×1920 (9:16) + 1080×1350 (4:5)' },
+          { icon: '📐', label: 'Upscale', value: 'Remotion escala 576→1080p directo (1 compresión, mejor calidad que upscale ComfyUI)' },
+          { icon: '🎵', label: 'Pack cierre', value: 'crossfade=0, entra después del video. Audio limitado a videoFrames.' },
+          { icon: '🔤', label: 'Subtítulos', value: 'Karaoke word-level, spacing 18px, Montserrat Bold 72/60px' },
         ],
       },
 
