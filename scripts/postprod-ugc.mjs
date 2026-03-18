@@ -789,7 +789,7 @@ async function main() {
   scpFrom(`${REMOTION_DIR}\\out\\${compName}Feed.mp4`, local45);
 
   // 13. Upload to Supabase Storage
-  const slug = marca.toLowerCase().replace(/\s+/g, '_');
+  const slug = marca.toLowerCase().replace(/[^a-z0-9]/g, '_');
   const ts = Date.now();
   const url916 = await uploadToStorage(local916, `creatividades/${slug}_ugc_${creatividadId}_916.mp4`);
   const url45 = await uploadToStorage(local45, `creatividades/${slug}_ugc_${creatividadId}_45.mp4`);
