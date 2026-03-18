@@ -2090,12 +2090,12 @@ export const pipelines = [
       },
 
       ejecucion: {
-        title: 'ComfyUI remoto — LTX-Video 2.3',
+        title: 'ComfyUI remoto — LTX-Video 2.3 + RTX Upscale',
         executor: 'script',
         executorDetail: 'comfy-t2v-ugc.mjs',
         stateIn: 'para_ejecucion',
         stateOut: null,
-        description: 'El script marca en_proceso, descarga el audio, lo sube a ComfyUI, envía el workflow LTX 2.3 (~20 nodos), espera el video, guarda latent y lo descarga. Si falla, marca como error.',
+        description: 'El script marca en_proceso, descarga el audio, lo sube a ComfyUI, envía el workflow LTX 2.3, espera el video, mergea audio, aplica RTX upscale x2 y lo descarga. Si falla, marca como error.',
         supabaseFields: {
           reads: {
             creatividades: ['id', 'prompt', 'marca', 'url', 'concepto'],
@@ -2130,11 +2130,11 @@ export const pipelines = [
               'Sampler: euler_ancestral_cfg_pp, 8 steps, CFG 1.0',
               'Resolución: 576×1024 (9:16), 24fps',
               'Audio: MelBandRoFormer → LTXVAudioVAEEncode (mask=0)',
-              'SaveLatent: ugc_{id}_latent en PC-2 (para upscale posterior)',
+              'SaveLatent: ugc_{id}_latent en PC-2 (backup)',
             ],
           },
           {
-            label: 'Esperar generación',
+            label: 'Esperar generación LTX',
             resource: { type: 'script', name: 'comfy-t2v-ugc.mjs → poll /history' },
             description: 'Polling cada 5s hasta output en /history. Timeout 15 min.',
             details: [
@@ -2145,14 +2145,37 @@ export const pipelines = [
           {
             label: 'Descargar video + merge audio',
             resource: { type: 'script', name: 'comfy-t2v-ugc.mjs → GET /view + ffmpeg' },
-            description: 'Descarga MP4 (576×1024) y mergea audio Cartesia original (sin upscale).',
+            description: 'Descarga MP4 (576×1024) y mergea audio Cartesia original.',
+          },
+          {
+            label: 'RTX Video SuperResolution x2',
+            resource: { type: 'script', name: 'comfy-t2v-ugc.mjs → POST /upload/image + POST /prompt' },
+            description: 'Sube video mergeado a ComfyUI y ejecuta workflow RTX upscale (NVIDIA TensorRT).',
+            details: [
+              'Workflow: workflows/rtx-video-upscale.json (5 nodos)',
+              'LoadVideo → GetVideoComponents → RTXVideoSuperResolution → CreateVideo → SaveVideo',
+              'Scale: x2, Quality: ULTRA',
+              '576×1024 → 1152×2048',
+              'Preserva audio original (no re-encode)',
+              '~26 segundos',
+            ],
+          },
+          {
+            label: 'Esperar RTX upscale',
+            resource: { type: 'script', name: 'comfy-t2v-ugc.mjs → poll /history' },
+            description: 'Polling cada 5s. Timeout 10 min. Output key: outputs["9"].images[0] (SaveVideo).',
+          },
+          {
+            label: 'Descargar video upscaleado',
+            resource: { type: 'script', name: 'comfy-t2v-ugc.mjs → GET /view' },
+            description: 'Descarga MP4 upscaleado (1152×2048) desde ComfyUI.',
           },
         ],
         meta: [
           { icon: '⚙️', label: 'Hardware', value: 'PC-2: RTX 5080 16GB, 192.168.1.26:8188' },
-          { icon: '⏱️', label: 'Tiempo', value: '~5-8 min/video (render LTX 2.3)' },
+          { icon: '⏱️', label: 'Tiempo', value: '~10 min/video (LTX ~9 min + RTX ~26s)' },
           { icon: '⚠️', label: 'Límite', value: 'Máx 1 video por corrida (VRAM leak)' },
-          { icon: '💾', label: 'Latent', value: 'Guardado en PC-2 para upscale posterior' },
+          { icon: '🔎', label: 'Upscale', value: 'RTX TensorRT x2 ULTRA inline (576→1152)' },
         ],
       },
 
@@ -2162,29 +2185,30 @@ export const pipelines = [
         executorDetail: 'comfy-t2v-ugc.mjs',
         stateIn: 'para_ejecucion',
         stateOut: 'base_lista',
-        description: 'El video base (576×1024) con audio se sube a Supabase Storage y se actualiza la creatividad.',
+        description: 'El video upscaleado (1152×2048) con audio se sube a Supabase Storage y se actualiza la creatividad.',
         supabaseFields: {
           reads: {},
           writes: {
-            storage: ['{marca}_ugc_{timestamp}.mp4 → bucket creatividades'],
+            storage: ['{marca}_ugc_{timestamp}.mp4 → bucket creatividades (video upscaleado 1152×2048)'],
             creatividades: {
-              update: ['link_ren_2 → URL pública video base con audio', 'estado → base_lista', 'condicion → para_revision'],
+              update: ['link_ren_1 → URL pública video upscaleado', 'link_ren_2 → URL pública video upscaleado', 'estado → base_lista', 'condicion → para_revision'],
             },
           },
         },
         steps: [
           {
-            label: 'Subir video base a Storage',
+            label: 'Subir video upscaleado a Storage',
             resource: { type: 'supabase', name: 'INSERT storage', op: 'INSERT' },
-            description: 'Upload al bucket "creatividades" de Supabase Storage.',
+            description: 'Upload del video upscaleado (1152×2048) al bucket "creatividades".',
             details: ['Nombre: creatividades/{marca}_ugc_{timestamp}.mp4'],
           },
           {
             label: 'Actualizar creatividad',
             resource: { type: 'supabase', name: 'UPDATE creatividades', op: 'UPDATE' },
-            description: 'Registra la URL del video base y cambia el estado.',
+            description: 'Registra la URL del video upscaleado y cambia el estado.',
             details: [
-              'link_ren_2 → URL pública del video base 576×1024 con audio',
+              'link_ren_1 → URL pública del video upscaleado 1152×2048',
+              'link_ren_2 → URL pública del video upscaleado 1152×2048',
               'estado → base_lista',
               'condicion → para_revision',
             ],
