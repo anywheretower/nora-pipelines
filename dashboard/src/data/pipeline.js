@@ -2223,7 +2223,7 @@ export const pipelines = [
         executorDetail: 'postprod-ugc.mjs',
         stateIn: 'aprobado',
         stateOut: null,
-        description: 'Tras aprobación humana: descarga video base 576p, Remotion escala a 1080p directo (1 compresión). Transcribe audio (Whisper CUDA), render dual (9:16 + 4:5) con subtítulos karaoke y pack de cierre. Flags: --subs-bottom, --no-gradient, --remove-words=N.',
+        description: 'Tras aprobación humana: descarga video upscaleado (1152×2048), Remotion escala a 1080p. Transcribe audio (Whisper CUDA), render dual (9:16 + 4:5) con subtítulos karaoke y pack de cierre. Flags: --subs-bottom, --subs-right, --no-gradient, --remove-words=N.',
         manual: true,
         supabaseFields: {
           reads: {
@@ -2235,7 +2235,7 @@ export const pipelines = [
           {
             label: 'Descargar video base + audio',
             resource: { type: 'script', name: 'postprod-ugc.mjs → fetch' },
-            description: 'Descarga video base 576p (link_ren_1, fallback link_ren_2) y audio (url). Remotion escala a 1080p en render.',
+            description: 'Descarga video upscaleado 1152×2048 (link_ren_1) y audio (url). Remotion escala a 1080p en render.',
           },
           {
             label: 'Copiar assets a PC-2',
@@ -2259,11 +2259,12 @@ export const pipelines = [
             details: [
               'Patrón: {Marca}UGC{ID}.tsx (no inputProps genéricos)',
               'Karaoke word-level: ~5 palabras/grupo, 3f gap',
-              'Font: 72px (9:16), 60px (4:5) — Montserrat 700',
-              'Posición subs: --subs-bottom (bottom: 280/200) o top (150/100)',
+              'Font: 60px (9:16), 50px (4:5) — Montserrat 700',
+              'Posición subs: 9:16 arriba (default) o --subs-bottom. 4:5 siempre abajo.',
+              '--subs-right: alinear subtítulos a la derecha (variación entre videos)',
               '--no-gradient: sin degradado detrás de subs',
               '--remove-words=N: eliminar palabras de Whisper por índice',
-              'Whisper fixes: mapa WHISPER_FIXES para errores comunes (paddle→pádel, Centra→Cemtra)',
+              'Whisper fixes: mapa WHISPER_FIXES para errores comunes (paddle→pádel, Centra→Cemtra, doctor→Doctor)',
               'Poster frame: frame 60, primera frase visible',
               'Pack de cierre: logo + URL por marca (PACK_PROPS), URL 50px',
             ],
@@ -2283,9 +2284,9 @@ export const pipelines = [
           { icon: '⚙️', label: 'Hardware', value: 'PC-2: RTX 5080 16GB (Whisper CUDA + Remotion)' },
           { icon: '⏱️', label: 'Tiempo', value: '~3-5 min (whisper ~30s + 2 renders ~2min c/u)' },
           { icon: '🎬', label: 'Output', value: '2 videos: 1080×1920 (9:16) + 1080×1350 (4:5)' },
-          { icon: '📐', label: 'Upscale', value: 'Remotion escala 576→1080p directo (1 compresión, mejor calidad que upscale ComfyUI)' },
+          { icon: '📐', label: 'Escala', value: 'Remotion escala 1152→1080p (video ya upscaleado por RTX)' },
           { icon: '🎵', label: 'Pack cierre', value: 'crossfade=0, entra después del video. Audio limitado a videoFrames.' },
-          { icon: '🔤', label: 'Subtítulos', value: 'Karaoke word-level, spacing 18px, Montserrat Bold 72/60px' },
+          { icon: '🔤', label: 'Subtítulos', value: 'Karaoke word-level, spacing 18px, Montserrat Bold 60/50px. --subs-right disponible.' },
         ],
       },
 
