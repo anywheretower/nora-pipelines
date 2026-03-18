@@ -1,7 +1,6 @@
 /**
- * NORA — Text-to-Video UGC (LTX-Video 2.3 con audio)
- * Genera video vía ComfyUI remoto (PC-2), merge audio, sube a Supabase Storage.
- * Guarda latent intermedio para futuro upscale (SaveLatent node).
+ * NORA — Text-to-Video UGC (LTX-Video 2.3 con audio + RTX upscale)
+ * Genera video vía ComfyUI remoto (PC-2), merge audio, upscale RTX x2, sube a Supabase Storage.
  *
  * Uso: node comfy-t2v-ugc.mjs [--once] [--id=123] [--max=1]
  *   --once    Procesa lo pendiente y sale (no hace polling)
@@ -320,6 +319,70 @@ async function downloadVideo(filename, subfolder, type) {
 }
 
 // =============================================================
+// RTX Video Super Resolution (upscale x2)
+// =============================================================
+
+function buildRTXUpscaleWorkflow(videoFilename) {
+  return {
+    "6": { class_type: "LoadVideo", inputs: { file: videoFilename } },
+    "7": { class_type: "GetVideoComponents", inputs: { video: ["6", 0] } },
+    "1": { class_type: "RTXVideoSuperResolution", inputs: { images: ["7", 0], resize_type: "scale by multiplier", "resize_type.scale": 2.0, quality: "ULTRA" } },
+    "8": { class_type: "CreateVideo", inputs: { images: ["1", 0], audio: ["7", 1], fps: ["7", 2] } },
+    "9": { class_type: "SaveVideo", inputs: { video: ["8", 0], filename_prefix: "video/rtx_upscale", format: "mp4", codec: "auto" } }
+  };
+}
+
+async function uploadVideoToComfyUI(videoBuffer, filename) {
+  const boundary = '----NoraBoundary' + Date.now();
+  const header = `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${filename}"\r\nContent-Type: video/mp4\r\n\r\n`;
+  const footer = `\r\n--${boundary}--\r\n`;
+  const body = Buffer.concat([Buffer.from(header), videoBuffer, Buffer.from(footer)]);
+
+  const r = await fetch(`${COMFY}/upload/image`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      'Content-Length': body.length.toString()
+    },
+    body
+  });
+  if (!r.ok) throw new Error(`Video upload to ComfyUI failed: ${r.status} ${await r.text()}`);
+  const data = await r.json();
+  log(`  ☁️ Video subido a ComfyUI: ${data.name}`);
+  return data.name;
+}
+
+async function waitForRTXUpscale(promptId, maxWait = 600000) {
+  // 10 min timeout (RTX upscale is fast, ~5-15s)
+  const start = Date.now();
+  while (Date.now() - start < maxWait) {
+    await new Promise(r => setTimeout(r, COMFY_POLL));
+    try {
+      const r = await fetch(`${COMFY}/history/${promptId}`);
+      const history = await r.json();
+      const entry = history[promptId];
+      if (!entry) continue;
+
+      if (entry.status?.status_str === 'error') {
+        throw new Error(`RTX upscale error: ${JSON.stringify(entry.status)}`);
+      }
+
+      const outputs = entry.outputs;
+      if (outputs) {
+        const saveNode = outputs["9"];
+        if (saveNode && saveNode.images && saveNode.images.length > 0) {
+          const vid = saveNode.images[0];
+          return { filename: vid.filename, subfolder: vid.subfolder ?? '', type: vid.type ?? 'output' };
+        }
+      }
+    } catch (e) {
+      if (e.message.includes('RTX upscale error')) throw e;
+    }
+  }
+  throw new Error(`Timeout waiting for RTX upscale (${maxWait / 1000}s)`);
+}
+
+// =============================================================
 // ffmpeg: merge Cartesia audio into video
 // =============================================================
 
@@ -413,11 +476,24 @@ async function processOne(creatividad) {
   // 8. Merge padded Cartesia audio into video (includes trailing silence)
   const mergedBuffer = mergeAudio(rawBuffer, audioBuffer);
 
-  // 9. Upload to Supabase Storage
-  const videoUrl = await uploadToSupabase(mergedBuffer, marca);
+  // 9. RTX Video Super Resolution (x2 upscale)
+  log(`  🚀 RTX upscale x2 — subiendo video a ComfyUI...`);
+  const rtxInputName = await uploadVideoToComfyUI(mergedBuffer, `nora_ugc_${id}_base_${Date.now()}.mp4`);
+  const rtxWorkflow = buildRTXUpscaleWorkflow(rtxInputName);
+  const rtxPromptId = await queuePrompt(rtxWorkflow);
+  log(`  ⏳ RTX queued (${rtxPromptId.substring(0, 8)}...)`);
+
+  const rtxInfo = await waitForRTXUpscale(rtxPromptId);
+  log(`  ✅ RTX upscale listo: ${rtxInfo.filename}`);
+
+  const upscaledBuffer = await downloadVideo(rtxInfo.filename, rtxInfo.subfolder, rtxInfo.type);
+  log(`  📥 Upscaled descargado (${(upscaledBuffer.length / 1024 / 1024).toFixed(1)} MB)`);
+
+  // 10. Upload to Supabase Storage (1152×2048 — postprod Remotion escala a 1080×1920)
+  const videoUrl = await uploadToSupabase(upscaledBuffer, marca);
   log(`  ☁️ Subido: ${videoUrl.split('/').pop()}`);
 
-  // 10. Update creatividad
+  // 12. Update creatividad
   await updateCreatividad(id, videoUrl);
   log(`  ✅ #${id} → para_revision`);
   stats.ok++;

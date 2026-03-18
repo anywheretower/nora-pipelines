@@ -1,0 +1,47 @@
+{
+  "_meta": {
+    "name": "RTX Video Super Resolution",
+    "description": "NVIDIA RTX Video Upscale via TensorRT. Scale x2 ULTRA quality.",
+    "usage": "Cambiar INPUT_FILENAME en nodo 6. Scale 1.0-4.0 en nodo 1. Quality: LOW/MEDIUM/HIGH/ULTRA.",
+    "nodes": "LoadVideo → GetVideoComponents → RTXVideoSuperResolution → CreateVideo → SaveVideo",
+    "requires": "comfyui_nvidia_rtx_nodes (RTX GPU)"
+  },
+  "6": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": "INPUT_FILENAME.mp4"
+    }
+  },
+  "7": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": ["6", 0]
+    }
+  },
+  "1": {
+    "class_type": "RTXVideoSuperResolution",
+    "inputs": {
+      "images": ["7", 0],
+      "resize_type": "scale by multiplier",
+      "resize_type.scale": 2.0,
+      "quality": "ULTRA"
+    }
+  },
+  "8": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": ["1", 0],
+      "audio": ["7", 1],
+      "fps": ["7", 2]
+    }
+  },
+  "9": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": ["8", 0],
+      "filename_prefix": "video/rtx_upscale",
+      "format": "mp4",
+      "codec": "auto"
+    }
+  }
+}
