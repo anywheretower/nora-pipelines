@@ -77,12 +77,13 @@ const args = process.argv.slice(2);
 const idArg = args.find(a => a.startsWith('--id='));
 const creatividadId = idArg ? parseInt(idArg.split('=')[1]) : null;
 const subsBottom = args.includes('--subs-bottom');
+const subsRight = args.includes('--subs-right');
 const noGradient = args.includes('--no-gradient');
 const removeWordsArg = args.find(a => a.startsWith('--remove-words='));
 const removeWordIndices = removeWordsArg ? removeWordsArg.split('=')[1].split(',').map(Number) : [];
 
 if (!creatividadId) {
-  console.error('Uso: node postprod-ugc.mjs --id=<ID> [--subs-bottom] [--no-gradient] [--remove-words=2,5]');
+  console.error('Uso: node postprod-ugc.mjs --id=<ID> [--subs-bottom] [--subs-right] [--no-gradient] [--remove-words=2,5]');
   process.exit(1);
 }
 
@@ -161,6 +162,8 @@ const WHISPER_FIXES = {
   'Echo': 'Equos',
   'echo.': 'Equos.',
   'Echo.': 'Equos.',
+  'doctor': 'Doctor',
+  'doctor.': 'Doctor.',
 };
 // Words to remove (Whisper hallucinates extra words)
 const WHISPER_REMOVE = new Set();
@@ -233,7 +236,7 @@ function getVideoFps(videoRemotePath) {
 // =============================================================
 
 function generateCompositionTsx(compName, marca, id, groups, videoFile, audioFile, packProps, is45, opts = {}) {
-  const fontSize = is45 ? 60 : 72;
+  const fontSize = is45 ? 50 : 60;
   const sideMargin = is45 ? 35 : 45;
   const objectFit = is45 ? 'objectFit: "cover",' : '';
   const feedSuffix = is45 ? 'Feed' : '';
@@ -242,6 +245,7 @@ function generateCompositionTsx(compName, marca, id, groups, videoFile, audioFil
   const subsPos = opts.subsBottom
     ? (is45 ? 'bottom: 200' : 'bottom: 280')
     : (is45 ? 'top: 100' : 'top: 150');
+  const subsJustify = opts.subsRight ? 'flex-end' : 'flex-start';
   const showGradient = !opts.noGradient;
   const gradientHeight = is45 ? '35%' : '40%';
   const gradientPosition = opts.subsBottom ? 'bottom' : 'top';
@@ -334,7 +338,7 @@ const KaraokeSubtitle: React.FC<{ group: SubtitleGroup }> = ({ group }) => {
         style={{
           display: "flex",
           flexWrap: "wrap",
-          justifyContent: "flex-start",
+          justifyContent: "${subsJustify}",
           gap: "3px 18px",
           lineHeight: 1.15,
         }}
@@ -425,7 +429,7 @@ export const ${compName}${feedSuffix}: React.FC<${compName}${feedSuffix}Props> =
             }}
           />` : ''}
           <div style={{ position: "absolute", ${subsPos}, left: ${sideMargin}, right: ${sideMargin} }}>
-            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-start", gap: "3px 18px", lineHeight: 1.15 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "${subsJustify}", gap: "3px 18px", lineHeight: 1.15 }}>
 ${posterWordsCode}
             </div>
           </div>
@@ -679,7 +683,7 @@ async function main() {
   log(`Pack de cierre: ${finalPackProps.logoFile}`);
 
   // 7. Generate TSX files
-  const tsxOpts = { subsBottom, noGradient };
+  const tsxOpts = { subsBottom, subsRight, noGradient };
   const tsx916 = generateCompositionTsx(compName, marca, creatividadId, groups, `ugc_${creatividadId}.mp4`, `ugc_${creatividadId}.wav`, finalPackProps, false, tsxOpts);
   const tsx45 = generateCompositionTsx(compName, marca, creatividadId, groups, `ugc_${creatividadId}.mp4`, `ugc_${creatividadId}.wav`, finalPackProps, true, tsxOpts);
 
