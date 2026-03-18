@@ -68,7 +68,7 @@ const PACK_PROPS = {
   'RedAgrupa': { darkBg: '#FF0000', accent: '#FFFFFF', accentAlt: '#C0282B', logoFile: 'redagrupa_logo_1.png', logoWidth: 500, urlText: 'redagrupa.cl', musicFile: 'redagrupa_cierre_sting.wav' },
   'Meser': { darkBg: '#1E3A5F', accent: '#00BCD4', accentAlt: '#6EC6F5', logoFile: 'meser_logo_2.png', logoWidth: 500, urlText: 'meser.cl', musicFile: 'meser_cierre_sting.wav' },
   'Solkinest': { darkBg: '#4BA8B5', accent: '#D4A820', accentAlt: '#D4A820', logoFile: 'solkinest_logo_text.png', logoWidth: 320, urlText: 'solkinest.cl', musicFile: 'solkinest_cierre_sting.wav' },
-  'Buses Altas Cumbres': { darkBg: '#002284', accent: '#F6C200', accentAlt: '#002284', logoFile: 'bac_square_white.png', logoWidth: 320, urlText: 'busesaltascumbres.cl', musicFile: 'bac_cierre_synth_v2b.wav' },
+  'Buses Altas Cumbres': { darkBg: '#002284', accent: '#F6C200', accentAlt: '#002284', logoFile: 'bac_square_white.png', logoWidth: 500, urlFontSize: 36, urlText: 'busesaltascumbres.cl', musicFile: 'bac_cierre_synth_v2b.wav' },
   'La Reserva': { darkBg: '#2A9D8F', accent: '#7EDDD3', accentAlt: '#FFFFFF', logoFile: 'lareserva_logo_2.png', logoWidth: 320, urlText: '@lareserva.lago', musicFile: 'lareserva_cierre_sting.wav' },
 };
 
@@ -81,9 +81,11 @@ const subsRight = args.includes('--subs-right');
 const noGradient = args.includes('--no-gradient');
 const removeWordsArg = args.find(a => a.startsWith('--remove-words='));
 const removeWordIndices = removeWordsArg ? removeWordsArg.split('=')[1].split(',').map(Number) : [];
+const videoScaleArg = args.find(a => a.startsWith('--video-scale='));
+const videoScale = videoScaleArg ? parseFloat(videoScaleArg.split('=')[1]) : null;
 
 if (!creatividadId) {
-  console.error('Uso: node postprod-ugc.mjs --id=<ID> [--subs-bottom] [--subs-right] [--no-gradient] [--remove-words=2,5]');
+  console.error('Uso: node postprod-ugc.mjs --id=<ID> [--subs-bottom] [--subs-right] [--no-gradient] [--remove-words=2,5] [--video-scale=1.03]');
   process.exit(1);
 }
 
@@ -164,6 +166,13 @@ const WHISPER_FIXES = {
   'Echo.': 'Equos.',
   'doctor': 'Doctor',
   'doctor.': 'Doctor.',
+  'talca': 'Talca',
+  'talca.': 'Talca.',
+  'talca,': 'Talca,',
+  'altas': 'Altas',
+  'cumbres': 'Cumbres',
+  'cumbres.': 'Cumbres.',
+  'cumbres,': 'Cumbres,',
 };
 // Words to remove (Whisper hallucinates extra words)
 const WHISPER_REMOVE = new Set();
@@ -239,6 +248,7 @@ function generateCompositionTsx(compName, marca, id, groups, videoFile, audioFil
   const fontSize = is45 ? 50 : 60;
   const sideMargin = is45 ? 35 : 45;
   const objectFit = is45 ? 'objectFit: "cover",' : '';
+  const videoScaleStyle = (!is45 && opts.videoScale) ? `transform: "scale(${opts.videoScale})",` : '';
   const feedSuffix = is45 ? 'Feed' : '';
 
   // Subtitle position: 4:5 always bottom, 9:16 top (default) or bottom with --subs-bottom
@@ -413,7 +423,7 @@ export const ${compName}${feedSuffix}: React.FC<${compName}${feedSuffix}Props> =
         <AbsoluteFill>
           <OffthreadVideo
             src={staticFile(\`videos/\${videoFile}\`)}
-            style={{ width: "100%", height: "100%", ${objectFit} }}
+            style={{ width: "100%", height: "100%", ${objectFit} ${videoScaleStyle} }}
             muted
             startFrom={posterFrame}
             endAt={posterFrame + 1}
@@ -442,7 +452,7 @@ ${posterWordsCode}
         <AbsoluteFill style={{ opacity: videoOpacity }}>
           <OffthreadVideo
             src={staticFile(\`videos/\${videoFile}\`)}
-            style={{ width: "100%", height: "100%", ${objectFit} }}
+            style={{ width: "100%", height: "100%", ${objectFit} ${videoScaleStyle} }}
             muted
           />${showGradient ? `
           <div
@@ -482,7 +492,8 @@ ${posterWordsCode}
           logoGap={${packProps.logoGap}}` : ''}${packProps.lineOffset ? `
           lineOffset={${packProps.lineOffset}}` : ''}${packProps.groupOffset ? `
           groupOffset={${packProps.groupOffset}}` : ''}
-          urlText="${packProps.urlText}"
+          urlText="${packProps.urlText}"${packProps.urlFontSize ? `
+          urlFontSize={${packProps.urlFontSize}}` : ''}
           musicFile="${packProps.musicFile}"
           musicVolume={${packProps.musicVolume ?? 0.8}}
         />
@@ -684,7 +695,7 @@ async function main() {
   log(`Pack de cierre: ${finalPackProps.logoFile}`);
 
   // 7. Generate TSX files
-  const tsxOpts = { subsBottom, subsRight, noGradient };
+  const tsxOpts = { subsBottom, subsRight, noGradient, videoScale };
   const tsx916 = generateCompositionTsx(compName, marca, creatividadId, groups, `ugc_${creatividadId}.mp4`, `ugc_${creatividadId}.wav`, finalPackProps, false, tsxOpts);
   const tsx45 = generateCompositionTsx(compName, marca, creatividadId, groups, `ugc_${creatividadId}.mp4`, `ugc_${creatividadId}.wav`, finalPackProps, true, tsxOpts);
 
