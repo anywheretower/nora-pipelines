@@ -241,15 +241,16 @@ function generateCompositionTsx(compName, marca, id, groups, videoFile, audioFil
   const objectFit = is45 ? 'objectFit: "cover",' : '';
   const feedSuffix = is45 ? 'Feed' : '';
 
-  // Subtitle position: top (default) or bottom
-  const subsPos = opts.subsBottom
+  // Subtitle position: 4:5 always bottom, 9:16 top (default) or bottom with --subs-bottom
+  const atBottom = is45 || opts.subsBottom;
+  const subsPos = atBottom
     ? (is45 ? 'bottom: 200' : 'bottom: 280')
-    : (is45 ? 'top: 100' : 'top: 150');
+    : 'top: 150';
   const subsJustify = opts.subsRight ? 'flex-end' : 'flex-start';
   const showGradient = !opts.noGradient;
   const gradientHeight = is45 ? '35%' : '40%';
-  const gradientPosition = opts.subsBottom ? 'bottom' : 'top';
-  const gradientDirection = opts.subsBottom
+  const gradientPosition = atBottom ? 'bottom' : 'top';
+  const gradientDirection = atBottom
     ? 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0) 100%)'
     : 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0) 100%)';
 
