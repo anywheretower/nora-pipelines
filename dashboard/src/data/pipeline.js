@@ -1343,11 +1343,11 @@ export const pipelines = [
         executor: 'skill',
         label: 'Skill: nora-imagen-observacion (detecta tipo ángulo)',
         phases: ['activador', 'lectura', 'procesamiento'],
-        handoff: 'creatividad origen=multiangle en para_ejecucion',
+        handoff: 'nueva creatividad (mismo origen) + ejecuta script en modo manual',
       },
       {
         executor: 'script',
-        label: 'Script: comfy-multiangle.mjs',
+        label: 'Script: comfy-multiangle.mjs (modo manual --image --angle --id)',
         phases: ['ejecucion', 'entrega'],
         handoff: 'creatividad para_revision',
       },
@@ -1367,7 +1367,7 @@ export const pipelines = [
         executorDetail: 'nora-imagen-observacion',
         stateIn: null,
         stateOut: null,
-        description: 'El usuario deja una observación en NORA sobre ángulo de cámara ("desde arriba", "más de lado", "otro ángulo", etc.). El skill nora-imagen-observacion clasifica la observación como tipo "ángulo" y activa este pipeline en vez de regenerar desde cero.',
+        description: 'El usuario usa el modal "Cambiar Ángulo" en NORA (3 selectores: azimut, elevación, distancia) que genera una observación estructurada [ángulo] <sks>... O escribe una observación de texto libre sobre ángulo. El skill detecta el tipo y activa este pipeline.',
         supabaseFields: {
           reads: {
             creatividades: ['id', 'marca', 'observacion', 'condicion', 'link_ren_1', 'origen'],
@@ -1387,7 +1387,7 @@ export const pipelines = [
           },
         ],
         meta: [
-          { icon: '👁️', label: 'Trigger', value: 'Observación de ángulo en cualquier creatividad de imagen' },
+          { icon: '👁️', label: 'Trigger', value: 'Modal "Ángulo" en NORA o observación de texto libre sobre perspectiva' },
         ],
       },
 
@@ -1427,7 +1427,7 @@ export const pipelines = [
         executorDetail: 'nora-imagen-observacion → nora-multiangle',
         stateIn: null,
         stateOut: 'para_ejecucion',
-        description: 'Interpreta la observación como cambio relativo al ángulo base detectado. Mapea a parámetros <sks> absolutos. Crea 1 creatividad nueva con origen=multiangle.',
+        description: 'Si viene del modal: el <sks> ya está armado (prefijo [ángulo]). Si es texto libre: analiza imagen + mapea a <sks>. Crea 1 creatividad nueva con el mismo origen que la original.',
         supabaseFields: {
           reads: {},
           writes: {
@@ -1436,7 +1436,7 @@ export const pipelines = [
                 'Copiar campos de original EXCEPTO id, created_at, link_ren_1, link_ren_2, observacion',
                 'prompt → string <sks> (ej: "<sks> right side view elevated shot close-up")',
                 'url → link_ren_1 de la original (imagen base)',
-                'origen → multiangle',
+                'origen → mismo que la original (NO multiangle)',
                 'estado → para_ejecucion',
                 'condicion → null',
               ],
@@ -1456,7 +1456,7 @@ export const pipelines = [
           {
             label: 'INSERT creatividad multiangle',
             resource: { type: 'supabase', name: 'INSERT creatividades', op: 'INSERT' },
-            description: 'Nueva creatividad con prompt <sks>, url = imagen original, origen = multiangle.',
+            description: 'Nueva creatividad con mismo origen, url = imagen original. Script se ejecuta en modo manual.',
             stateChange: 'NULL → para_ejecucion',
           },
         ],
@@ -1481,7 +1481,7 @@ export const pipelines = [
               update: ['estado → en_proceso (pickup)'],
             },
           },
-          filters: ['estado = para_ejecucion', 'origen = multiangle', 'prompt NOT NULL', 'url NOT NULL'],
+          filters: ['Ejecutado en modo manual por la skill (--image --angle --id)'],
         },
         steps: [
           {
@@ -1521,7 +1521,7 @@ export const pipelines = [
           { icon: '🧠', label: 'Modelo', value: 'Qwen Image Edit 2511 fp8mixed (19.12 GB)' },
           { icon: '🔧', label: 'LoRAs', value: 'Multiple Angles (281 MB) + Lightning 4-step (281 MB)' },
           { icon: '📐', label: 'Resolución', value: '1104×1472 (3:4)' },
-          { icon: '⚡', label: 'Script', value: 'node comfy-multiangle.mjs --once [--id=N]' },
+          { icon: '⚡', label: 'Script', value: 'node comfy-multiangle.mjs --image=<url> --angle="<sks>..." --id=N' },
         ],
       },
 
