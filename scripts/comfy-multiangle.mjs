@@ -2,15 +2,12 @@
  * NORA — Multi-Angle Camera Control (Qwen Image Edit 2511 + Angles LoRA)
  * Toma una imagen existente y genera la misma escena desde un ángulo de cámara diferente.
  * Usa el LoRA de fal.ai "Multiple Angles" sobre Qwen-Image-Edit-2511 (fp8mixed).
+ * Ejecutado en modo manual por la skill nora-imagen-observacion.
  *
- * Uso pipeline: node comfy-multiangle.mjs [--once] [--id=123] [--max=4]
- *   --once       Procesa lo pendiente y sale (no hace polling)
- *   --id=123     Procesa solo esa creatividad
- *   --max=N      Máximo N imágenes por corrida (default: 4, por VRAM leak)
- *
- * Uso manual:  node comfy-multiangle.mjs --image=<url> --angle="<sks> front view eye-level shot medium shot" [--seed=123]
- *   --image     Imagen de entrada (URL)
- *   --angle     Prompt de ángulo (formato <sks>)
+ * Uso: node comfy-multiangle.mjs --image=<url> --angle="<sks> front view eye-level shot medium shot" [--id=123] [--seed=123]
+ *   --image     Imagen de entrada (URL) — requerido
+ *   --angle     Prompt de ángulo (formato <sks>) — requerido
+ *   --id        ID de creatividad en Supabase (sube resultado y actualiza estado)
  *   --seed      Seed específica (default: random)
  *   --no-lightning  No usar Lightning LoRA (más steps, ~90s)
  *   --strength  Fuerza del LoRA de ángulos (default: 1.0)
@@ -46,39 +43,35 @@ const COMFY = process.env.COMFY_URL || 'http://192.168.1.26:8188';
 const SUPA = process.env.SUPABASE_URL || 'https://fddokyfilokacsjdgiwe.supabase.co';
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkZG9reWZpbG9rYWNzamRnaXdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1OTc2MDEsImV4cCI6MjA4NTE3MzYwMX0._lY8wLKQ6pudUOp6pKX71YJ9bmwsAaoU794cqJNbdHc';
-const POLL_INTERVAL = 30000;
 const COMFY_POLL = 3000;
 const TG_BOT = '8150400766:AAEM2MB0KCpvWEr73AlGQ2d4r47ftpD26SQ';
 const TG_CHAT = '8276003178';
 
-const supaHeaders = {
-  'Authorization': `Bearer ${KEY}`,
-  'apikey': KEY,
-  'Content-Type': 'application/json',
-  'Prefer': 'return=minimal'
-};
-
 // --- Parse args ---
 const args = process.argv.slice(2);
-const once = args.includes('--once');
-const idArg = args.find(a => a.startsWith('--id='));
-const onlyId = idArg ? parseInt(idArg.split('=')[1]) : null;
-const maxArg = args.find(a => a.startsWith('--max='));
-const MAX_PER_RUN = maxArg ? parseInt(maxArg.split('=')[1]) : 4;
-
-// Manual mode args
 const imageArg = args.find(a => a.startsWith('--image='));
 const angleArg = args.find(a => a.startsWith('--angle='));
+const idArg = args.find(a => a.startsWith('--id='));
 const seedArg = args.find(a => a.startsWith('--seed='));
 const noLightning = args.includes('--no-lightning');
 const strengthArg = args.find(a => a.startsWith('--strength='));
 const loraStrength = strengthArg ? parseFloat(strengthArg.split('=')[1]) : 1.0;
 const stepsArg = args.find(a => a.startsWith('--steps='));
 
-const manualImage = imageArg ? imageArg.split('=').slice(1).join('=') : null;
-const manualAngle = angleArg ? angleArg.split('=').slice(1).join('=') : null;
-const manualSeed = seedArg ? parseInt(seedArg.split('=')[1]) : null;
+const imageUrl = imageArg ? imageArg.split('=').slice(1).join('=') : null;
+const anglePrompt = angleArg ? angleArg.split('=').slice(1).join('=') : null;
+const onlyId = idArg ? parseInt(idArg.split('=')[1]) : null;
+const seed = seedArg ? parseInt(seedArg.split('=')[1]) : randomSeed();
 const steps = stepsArg ? parseInt(stepsArg.split('=')[1]) : (noLightning ? 20 : 4);
+
+if (!imageUrl || !anglePrompt) {
+  console.error('Uso: node comfy-multiangle.mjs --image=<url> --angle="<sks> front view eye-level shot medium shot" [--id=123]');
+  console.error('\nEjemplos de ángulo:');
+  console.error('  "<sks> front view eye-level shot medium shot"');
+  console.error('  "<sks> right side view high-angle shot close-up"');
+  console.error('  "<sks> back-left quarter view low-angle shot wide shot"');
+  process.exit(1);
+}
 
 // Resolution: default 1104×1472 (NORA 3:4 standard)
 const IMG_W = 1104;
@@ -280,40 +273,6 @@ function buildWorkflow(imageUrl, anglePromptStr, seed) {
 
 // --- Supabase functions ---
 
-async function getPendingCreatividades() {
-  let url;
-  if (onlyId) {
-    url = `${SUPA}/rest/v1/creatividades?id=eq.${onlyId}&origen=eq.multiangle&select=id,prompt,marca,url,estado,origen`;
-  } else {
-    url = `${SUPA}/rest/v1/creatividades?estado=eq.para_ejecucion&origen=eq.multiangle&prompt=not.is.null&url=not.is.null&select=id,prompt,marca,url,estado,origen&order=id.asc`;
-  }
-  const r = await fetch(url, { headers: { 'Authorization': `Bearer ${KEY}`, 'apikey': KEY } });
-  const data = await r.json();
-  return data.filter(c => c.prompt && c.prompt.trim().length > 0 && c.url);
-}
-
-async function markAsProcessing(id) {
-  const r = await fetch(`${SUPA}/rest/v1/creatividades?id=eq.${id}`, {
-    method: 'PATCH',
-    headers: supaHeaders,
-    body: JSON.stringify({ estado: 'en_proceso' })
-  });
-  if (r.status !== 204) throw new Error(`Mark en_proceso failed: ${r.status}`);
-}
-
-async function markAsError(id, errorMsg) {
-  try {
-    await fetch(`${SUPA}/rest/v1/creatividades?id=eq.${id}`, {
-      method: 'PATCH',
-      headers: supaHeaders,
-      body: JSON.stringify({
-        estado: 'error',
-        observacion: `[auto] ${errorMsg.substring(0, 500)}`
-      })
-    });
-  } catch { /* best effort */ }
-}
-
 async function updateCreatividad(id, imageUrl) {
   const r = await fetch(`${SUPA}/rest/v1/creatividades?id=eq.${id}`, {
     method: 'PATCH',
@@ -399,50 +358,29 @@ async function uploadToSupabase(imageBuffer, marca) {
   return `${SUPA}/storage/v1/object/public/${data.Key}`;
 }
 
-// --- Process one creatividad ---
+// --- Main ---
 
-async function processOne(creatividad) {
-  const { id, prompt, marca, url } = creatividad;
-  log(`▶ #${id} [${marca}] — Multi-Angle: ${prompt}`);
-
-  await markAsProcessing(id);
-
-  const seed = randomSeed();
-  const workflow = buildWorkflow(url, prompt, seed);
-
-  const promptId = await queuePrompt(workflow);
-  log(`  ⏳ Queued (${promptId.substring(0, 8)}...) seed=${seed}`);
-
-  const imageInfo = await waitForCompletion(promptId);
-  log(`  ✅ Generada: ${imageInfo.filename}`);
-
-  const imageBuffer = await downloadImage(imageInfo.filename, imageInfo.subfolder, imageInfo.type);
-  log(`  📥 Descargada (${(imageBuffer.length / 1024 / 1024).toFixed(1)} MB)`);
-
-  const imageUrl = await uploadToSupabase(imageBuffer, marca);
-  log(`  ☁️ Subida: ${imageUrl.split('/').pop()}`);
-
-  await updateCreatividad(id, imageUrl);
-  log(`  ✅ #${id} → para_revision`);
-
-  await sendTgMessage(`🔄 Multi-Angle #${id} [${marca}]\n📷 ${prompt}\n🎲 Seed: ${seed}\n✅ ${imageUrl.split('/').pop()}`);
-
-  stats.ok++;
-  return imageUrl;
-}
-
-// --- Manual mode ---
-
-async function runManual() {
-  log('🎯 NORA Multi-Angle (modo manual)');
-  log(`📷 Imagen: ${manualImage}`);
-  log(`🔄 Ángulo: ${manualAngle}`);
-
-  const seed = manualSeed || randomSeed();
+async function main() {
+  log('🎯 NORA Multi-Angle Camera Control');
+  log(`📷 Imagen: ${imageUrl}`);
+  log(`🔄 Ángulo: ${anglePrompt}`);
   log(`🎲 Seed: ${seed}`);
   log(`⚡ Lightning: ${noLightning ? 'OFF' : 'ON'} (${steps} steps)`);
 
-  const workflow = buildWorkflow(manualImage, manualAngle, seed);
+  // Check ComfyUI is alive
+  try {
+    const r = await fetch(`${COMFY}/system_stats`, { signal: AbortSignal.timeout(5000) });
+    const sysStats = await r.json();
+    log(`ComfyUI v${sysStats.system.comfyui_version} — ${sysStats.devices[0].name.split(':')[1].trim()}`);
+  } catch (e) {
+    log('❌ ComfyUI no responde en ' + COMFY);
+    log('   1. PC-2 apagada → encender');
+    log('   2. ComfyUI no corre → run_nvidia_gpu_network.bat');
+    log('   3. IP cambió → verificar COMFY_URL en .env');
+    process.exit(1);
+  }
+
+  const workflow = buildWorkflow(imageUrl, anglePrompt, seed);
 
   const promptId = await queuePrompt(workflow);
   log(`⏳ Queued (${promptId.substring(0, 8)}...)`);
@@ -455,98 +393,17 @@ async function runManual() {
   const imageBuffer = await downloadImage(imageInfo.filename, imageInfo.subfolder, imageInfo.type);
   log(`📥 Descargada (${(imageBuffer.length / 1024 / 1024).toFixed(1)} MB)`);
 
-  // Upload if --id provided
+  // Upload + update Supabase if --id provided
   if (onlyId) {
-    const imageUrl = await uploadToSupabase(imageBuffer, 'manual');
-    log(`☁️ Subida: ${imageUrl}`);
-    await updateCreatividad(onlyId, imageUrl);
+    const resultUrl = await uploadToSupabase(imageBuffer, 'multiangle');
+    log(`☁️ Subida: ${resultUrl}`);
+    await updateCreatividad(onlyId, resultUrl);
     log(`✅ #${onlyId} → para_revision`);
   }
 
-  await sendTgMessage(`🔄 Multi-Angle generado\n📷 ${manualAngle}\n🎲 Seed: ${seed}\n⏱️ ${elapsed}s${onlyId ? `\n🆔 #${onlyId}` : ''}`);
+  await sendTgMessage(`🔄 Multi-Angle generado\n📷 ${anglePrompt}\n🎲 Seed: ${seed}\n⏱️ ${elapsed}s${onlyId ? `\n🆔 #${onlyId}` : ''}`);
 
   log('🎉 Listo!');
-}
-
-// --- Pipeline mode ---
-
-const stats = { ok: 0, fail: 0 };
-
-async function run() {
-  log('🚀 NORA Multi-Angle Camera Control — Iniciando');
-
-  // Check ComfyUI is alive
-  try {
-    const r = await fetch(`${COMFY}/system_stats`, { signal: AbortSignal.timeout(5000) });
-    const sysStats = await r.json();
-    log(`ComfyUI v${sysStats.system.comfyui_version} — ${sysStats.devices[0].name.split(':')[1].trim()}`);
-  } catch (e) {
-    log('❌ ComfyUI no responde en ' + COMFY);
-    log('');
-    log('   Posibles causas:');
-    log('   1. PC-2 está apagada → encender PC-2');
-    log('   2. ComfyUI no está corriendo → ejecutar run_nvidia_gpu_network.bat en PC-2');
-    log('   3. IP cambió → verificar IP de PC-2 y actualizar COMFY_URL en .env');
-    log('');
-    log('   Una vez ComfyUI esté corriendo, re-ejecutar:');
-    log(`   node ${process.argv[1]} ${process.argv.slice(2).join(' ')}`);
-    process.exit(1);
-  }
-
-  if (!KEY) {
-    log('❌ SUPABASE_SERVICE_ROLE_KEY no configurada');
-    log('   Verificar nora-pipelines/.env o exportar la variable de entorno');
-    process.exit(1);
-  }
-
-  let keepGoing = true;
-  while (keepGoing) {
-    let pending;
-    try {
-      pending = await getPendingCreatividades();
-    } catch (e) {
-      log(`❌ Error consultando Supabase: ${e.message}`);
-      if (once || onlyId) break;
-      log('  ⏸ Reintentando en 30s...');
-      await new Promise(r => setTimeout(r, 30000));
-      continue;
-    }
-
-    if (pending.length === 0) {
-      if (once || onlyId) {
-        log('Sin creatividades multiangle pendientes. Saliendo.');
-        break;
-      }
-      await new Promise(r => setTimeout(r, POLL_INTERVAL));
-      continue;
-    }
-
-    const c = pending[0];
-    log(`📋 ${pending.length} pendiente(s) — Procesando #${c.id} [${c.marca}]`);
-
-    try {
-      await processOne(c);
-    } catch (e) {
-      log(`❌ #${c.id} Error: ${e.message}`);
-      await markAsError(c.id, e.message);
-      log(`  ⚠️ #${c.id} → estado=error`);
-      stats.fail++;
-    }
-
-    if (stats.ok + stats.fail >= MAX_PER_RUN) {
-      log(`🛑 Límite de ${MAX_PER_RUN} imágenes por corrida alcanzado.`);
-      break;
-    }
-
-    if (!once || pending.length > 1) {
-      log('  ⏸ 5s antes de la siguiente...');
-      await new Promise(r => setTimeout(r, 5000));
-    }
-
-    if (onlyId) break;
-  }
-
-  log(`👋 Fin — ✅ ${stats.ok} generadas, ❌ ${stats.fail} fallidas`);
 }
 
 // --- Entry point ---
@@ -554,10 +411,4 @@ async function run() {
 process.on('uncaughtException', (e) => { log(`💥 UNCAUGHT: ${e.message}\n${e.stack}`); });
 process.on('unhandledRejection', (e) => { log(`💥 UNHANDLED REJECTION: ${e?.message || e}\n${e?.stack || ''}`); });
 
-if (manualImage && manualAngle) {
-  // Manual mode: --image + --angle
-  runManual().catch(e => { log(`💥 ERROR: ${e.message}\n${e.stack}`); process.exit(1); });
-} else {
-  // Pipeline mode: process from Supabase
-  run().catch(e => { log(`💥 RUN ERROR: ${e.message}\n${e.stack}`); process.exit(1); });
-}
+main().catch(e => { log(`💥 ERROR: ${e.message}\n${e.stack}`); process.exit(1); });
