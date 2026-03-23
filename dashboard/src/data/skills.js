@@ -151,6 +151,23 @@ export const skills = [
     path: '/Users/imac/Desktop/noracode/.agents/skills/nora-video-ugc/SKILL.md',
   },
   {
+    id: 'nora-video-i2v',
+    title: 'nora-video-i2v',
+    badge: 'Img2Video',
+    badgeClass: 'badge-gen',
+    status: 'active',
+    description: 'Anima una imagen existente en video UGC con LTX-Video 2.3 I2V. Acepta ID de creatividad o URL directa como imagen fuente. Genera libreto + voz Cartesia TTS + prompt de movimiento → INSERT Supabase → render ComfyUI con lip-sync.',
+    meta: [
+      { icon: '⚡', label: 'Activa', value: 'bajo demanda — /nora-video-i2v' },
+      { icon: '📤', label: 'Entrega', value: 'creatividad para_ejecucion + video animado vía ComfyUI' },
+      { icon: '🔧', label: 'Script', value: 'comfy-i2v-ugc.mjs --once --id=N [--strength=1.0]' },
+      { icon: '📋', label: 'Escribe', value: 'creatividades — prompt, concepto, slogan, copy, url (audio WAV), link_ren_2 (imagen), origen=i2v' },
+    ],
+    rev: 'Rev: 2026-03-23',
+    deps: '← nora-voz-cartesia + nora-prompt-ltxvideo (variante I2V)',
+    path: '/Users/imac/Desktop/noracode/.agents/skills/nora-video-i2v/SKILL.md',
+  },
+  {
     id: 'nora-voz-cartesia',
     title: 'nora-voz-cartesia',
     badge: 'Guía integrada',

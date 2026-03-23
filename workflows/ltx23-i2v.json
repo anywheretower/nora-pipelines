@@ -1,0 +1,326 @@
+{
+  "last_node_id": 811,
+  "last_link_id": 500,
+  "nodes": [
+    {
+      "id": 100,
+      "type": "UnetLoaderGGUF",
+      "pos": [-1800, 200],
+      "size": [350, 60],
+      "title": "LTX 2.3 Model (Q4 GGUF)",
+      "widgets_values": ["ltx-2-3-22b-dev-Q4_K_M.gguf"]
+    },
+    {
+      "id": 101,
+      "type": "LoraLoaderModelOnly",
+      "pos": [-1800, 320],
+      "size": [350, 100],
+      "title": "Distilled LoRA (8 steps)",
+      "inputs": [{"name": "model", "type": "MODEL", "link": 1}],
+      "widgets_values": ["ltx-2.3-22b-distilled-lora-384.safetensors", 0.5]
+    },
+    {
+      "id": 102,
+      "type": "VAELoader",
+      "pos": [-1800, 480],
+      "size": [350, 60],
+      "title": "Video VAE",
+      "widgets_values": ["LTX23_video_vae_bf16.safetensors"]
+    },
+    {
+      "id": 103,
+      "type": "LTXVAudioVAELoader",
+      "pos": [-1800, 580],
+      "size": [350, 60],
+      "title": "Audio VAE",
+      "widgets_values": ["LTX23_audio_vae_bf16.safetensors"]
+    },
+    {
+      "id": 104,
+      "type": "DualCLIPLoaderGGUF",
+      "pos": [-1800, 680],
+      "size": [350, 120],
+      "title": "Text Encoder (Gemma 3 + Projection)",
+      "widgets_values": ["gemma-3-12b-it-IQ4_XS.gguf", "ltx-2.3_text_projection_bf16.safetensors", "ltxv"]
+    },
+    {
+      "id": 105,
+      "type": "MelBandRoFormerModelLoader",
+      "pos": [-1800, 860],
+      "size": [350, 60],
+      "title": "MelBandRoFormer (Audio Sep)",
+      "widgets_values": ["MelBandRoformer_fp32.safetensors"]
+    },
+    {
+      "id": 150,
+      "type": "LoadImage",
+      "pos": [-1200, 200],
+      "size": [300, 300],
+      "title": "Load First Frame",
+      "widgets_values": ["mi_imagen.png", "image"],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 200,
+      "type": "CLIPTextEncode",
+      "pos": [-800, 200],
+      "size": [400, 200],
+      "title": "Positive Prompt",
+      "inputs": [{"name": "clip", "type": "CLIP", "link": 10}],
+      "widgets_values": ["The scene slowly comes to life with gentle movement. Cinematic lighting, natural motion, smooth camera. Vertical format 9:16."],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 201,
+      "type": "CLIPTextEncode",
+      "pos": [-800, 460],
+      "size": [400, 120],
+      "title": "Negative Prompt",
+      "inputs": [{"name": "clip", "type": "CLIP", "link": 11}],
+      "widgets_values": ["camera equipment, tripod visible, text, watermark, blurry, distorted face, cartoon, ugly, frozen, static, no motion"],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 250,
+      "type": "LTXVImgToVideo",
+      "pos": [-300, 300],
+      "size": [300, 250],
+      "title": "Image → Video Conditioning",
+      "inputs": [
+        {"name": "positive", "type": "CONDITIONING", "link": 20},
+        {"name": "negative", "type": "CONDITIONING", "link": 21},
+        {"name": "vae", "type": "VAE", "link": 22},
+        {"name": "image", "type": "IMAGE", "link": 23}
+      ],
+      "widgets_values": [576, 1024, 257, 1, 1.0],
+      "color": "#232",
+      "bgcolor": "#354"
+    },
+    {
+      "id": 310,
+      "type": "LoadAudio",
+      "pos": [-800, 700],
+      "size": [300, 80],
+      "title": "Load Audio (Cartesia WAV)",
+      "widgets_values": ["mi_audio.wav"]
+    },
+    {
+      "id": 311,
+      "type": "TrimAudioDuration",
+      "pos": [-450, 700],
+      "size": [250, 80],
+      "title": "Trim Audio",
+      "inputs": [{"name": "audio", "type": "AUDIO", "link": 30}],
+      "widgets_values": [0, 10.5]
+    },
+    {
+      "id": 312,
+      "type": "MelBandRoFormerSampler",
+      "pos": [-150, 700],
+      "size": [250, 60],
+      "title": "Separate Vocals",
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 31},
+        {"name": "audio", "type": "AUDIO", "link": 32}
+      ]
+    },
+    {
+      "id": 313,
+      "type": "LTXVAudioVAEEncode",
+      "pos": [150, 700],
+      "size": [250, 60],
+      "title": "Audio VAE Encode",
+      "inputs": [
+        {"name": "audio", "type": "AUDIO", "link": 33},
+        {"name": "audio_vae", "type": "VAE", "link": 34}
+      ]
+    },
+    {
+      "id": 314,
+      "type": "SetLatentNoiseMask",
+      "pos": [450, 700],
+      "size": [220, 60],
+      "title": "Audio Mask (0 = condition)",
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 35},
+        {"name": "mask", "type": "MASK", "link": 36}
+      ]
+    },
+    {
+      "id": 315,
+      "type": "SolidMask",
+      "pos": [450, 820],
+      "size": [220, 80],
+      "title": "Mask = 0 (lip sync)",
+      "widgets_values": [0.0, 1, 1]
+    },
+    {
+      "id": 320,
+      "type": "LTXVConcatAVLatent",
+      "pos": [750, 500],
+      "size": [200, 60],
+      "title": "Concat Video + Audio",
+      "inputs": [
+        {"name": "video_latent", "type": "LATENT", "link": 40},
+        {"name": "audio_latent", "type": "LATENT", "link": 41}
+      ]
+    },
+    {
+      "id": 400,
+      "type": "RandomNoise",
+      "pos": [750, 200],
+      "size": [250, 80],
+      "title": "Noise (Seed)",
+      "widgets_values": [518374, "fixed"]
+    },
+    {
+      "id": 401,
+      "type": "CFGGuider",
+      "pos": [750, 330],
+      "size": [250, 100],
+      "title": "CFG Guider (1.0)",
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 50},
+        {"name": "positive", "type": "CONDITIONING", "link": 51},
+        {"name": "negative", "type": "CONDITIONING", "link": 52}
+      ],
+      "widgets_values": [1.0]
+    },
+    {
+      "id": 402,
+      "type": "KSamplerSelect",
+      "pos": [1050, 200],
+      "size": [280, 60],
+      "title": "Sampler",
+      "widgets_values": ["euler_ancestral_cfg_pp"]
+    },
+    {
+      "id": 403,
+      "type": "ManualSigmas",
+      "pos": [1050, 310],
+      "size": [500, 60],
+      "title": "Sigmas (8 steps distilled)",
+      "widgets_values": ["1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"]
+    },
+    {
+      "id": 404,
+      "type": "SamplerCustomAdvanced",
+      "pos": [1050, 430],
+      "size": [250, 120],
+      "title": "Sample Stage 1",
+      "inputs": [
+        {"name": "noise", "type": "NOISE", "link": 60},
+        {"name": "guider", "type": "GUIDER", "link": 61},
+        {"name": "sampler", "type": "SAMPLER", "link": 62},
+        {"name": "sigmas", "type": "SIGMAS", "link": 63},
+        {"name": "latent_image", "type": "LATENT", "link": 64}
+      ]
+    },
+    {
+      "id": 410,
+      "type": "LTXVSeparateAVLatent",
+      "pos": [1400, 430],
+      "size": [200, 60],
+      "title": "Separate AV",
+      "inputs": [{"name": "av_latent", "type": "LATENT", "link": 70}]
+    },
+    {
+      "id": 411,
+      "type": "SaveLatent",
+      "pos": [1400, 550],
+      "size": [300, 60],
+      "title": "Save Latent (para upscale)",
+      "inputs": [{"name": "samples", "type": "LATENT", "link": 71}],
+      "widgets_values": ["LTX-2.3/ltx23_i2v_latent"]
+    },
+    {
+      "id": 700,
+      "type": "VAEDecodeTiled",
+      "pos": [1700, 350],
+      "size": [280, 150],
+      "title": "Decode Video (Tiled)",
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 80},
+        {"name": "vae", "type": "VAE", "link": 81}
+      ],
+      "widgets_values": [512, 64, 512, 4]
+    },
+    {
+      "id": 701,
+      "type": "LTXVAudioVAEDecode",
+      "pos": [1700, 560],
+      "size": [250, 60],
+      "title": "Decode Audio",
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 82},
+        {"name": "audio_vae", "type": "VAE", "link": 83}
+      ]
+    },
+    {
+      "id": 800,
+      "type": "VHS_VideoCombine",
+      "pos": [2050, 350],
+      "size": [400, 300],
+      "title": "Save Video",
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 90},
+        {"name": "audio", "type": "AUDIO", "link": 91}
+      ],
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "LTX-2.3/ltx23_i2v",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true
+      }
+    }
+  ],
+  "links": [
+    [1, 100, 0, 101, 0, "MODEL"],
+    [10, 104, 0, 200, 0, "CLIP"],
+    [11, 104, 0, 201, 0, "CLIP"],
+    [20, 200, 0, 250, 0, "CONDITIONING"],
+    [21, 201, 0, 250, 1, "CONDITIONING"],
+    [22, 102, 0, 250, 2, "VAE"],
+    [23, 150, 0, 250, 3, "IMAGE"],
+    [30, 310, 0, 311, 0, "AUDIO"],
+    [31, 105, 0, 312, 0, "MODEL"],
+    [32, 311, 0, 312, 0, "AUDIO"],
+    [33, 312, 0, 313, 0, "AUDIO"],
+    [34, 103, 0, 313, 1, "VAE"],
+    [35, 313, 0, 314, 0, "LATENT"],
+    [36, 315, 0, 314, 1, "MASK"],
+    [40, 250, 2, 320, 0, "LATENT"],
+    [41, 314, 0, 320, 1, "LATENT"],
+    [50, 101, 0, 401, 0, "MODEL"],
+    [51, 250, 0, 401, 1, "CONDITIONING"],
+    [52, 250, 1, 401, 2, "CONDITIONING"],
+    [60, 400, 0, 404, 0, "NOISE"],
+    [61, 401, 0, 404, 1, "GUIDER"],
+    [62, 402, 0, 404, 2, "SAMPLER"],
+    [63, 403, 0, 404, 3, "SIGMAS"],
+    [64, 320, 0, 404, 4, "LATENT"],
+    [70, 404, 0, 410, 0, "LATENT"],
+    [71, 404, 0, 411, 0, "LATENT"],
+    [80, 410, 0, 700, 0, "LATENT"],
+    [81, 102, 0, 700, 1, "VAE"],
+    [82, 410, 1, 701, 0, "LATENT"],
+    [83, 103, 0, 701, 1, "VAE"],
+    [90, 700, 0, 800, 0, "IMAGE"],
+    [91, 701, 0, 800, 1, "AUDIO"]
+  ],
+  "config": {},
+  "extra": {
+    "ds": {"scale": 0.7, "offset": [800, -200]},
+    "info": "LTX 2.3 I2V con audio Cartesia — Basado en T2V validado 2026-03-14"
+  },
+  "version": 0.4
+}
