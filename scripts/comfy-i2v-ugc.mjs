@@ -78,10 +78,10 @@ function randomSeed() {
 
 function buildWorkflow(prompt, audioFilename, imageFilename, seed, duration, id) {
   const FPS = 24;
-  const WIDTH = 576;
-  const HEIGHT = 1024;
+  const WIDTH = 736;
+  const HEIGHT = 1280;
   const FRAMES = Math.ceil((Math.ceil(duration * FPS) - 1) / 8) * 8 + 1;
-  const NEGATIVE = 'camera equipment, tripod visible, text, watermark, blurry, distorted face, cartoon, ugly, closed mouth, silent, not speaking';
+  const NEGATIVE = 'zoom in, zoom out, dolly, camera push, camera pull, camera movement, perspective change, pan, tilt, orbit, camera equipment, tripod visible, text, watermark, blurry, distorted face, cartoon, ugly, closed mouth, silent, not speaking';
 
   const w = {};
 

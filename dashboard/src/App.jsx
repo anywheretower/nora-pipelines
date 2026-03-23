@@ -51,7 +51,7 @@ function App() {
         onToggleTheme={toggleTheme}
         pipelineCount={pipelines.length}
         skillCount={skills.length}
-        scriptCount={3}
+        scriptCount={2}
         docCount={sharedDocs.length}
       />
 
