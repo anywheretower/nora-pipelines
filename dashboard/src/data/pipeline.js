@@ -1329,6 +1329,281 @@ export const pipelines = [
   },
 
   // ============================================================
+  // Pipeline 3b: Multi-Angle · Cambio de Ángulo (Qwen + Angles LoRA)
+  // ============================================================
+  {
+    id: 'multiangle',
+    title: 'Multi-Angle · Cambio de Ángulo',
+    subtitle: 'Corrección de ángulo de cámara vía observaciones (Qwen Image Edit + Angles LoRA)',
+    command: '/nora-multiangle',
+    status: 'activo',
+
+    executionBlocks: [
+      {
+        executor: 'skill',
+        label: 'Skill: nora-imagen-observacion (detecta tipo ángulo)',
+        phases: ['activador', 'lectura', 'procesamiento'],
+        handoff: 'creatividad origen=multiangle en para_ejecucion',
+      },
+      {
+        executor: 'script',
+        label: 'Script: comfy-multiangle.mjs',
+        phases: ['ejecucion', 'entrega'],
+        handoff: 'creatividad para_revision',
+      },
+      {
+        executor: 'skill',
+        label: 'Observación humana: nora-imagen-observacion',
+        phases: ['observacion'],
+        optional: true,
+        handoff: null,
+      },
+    ],
+
+    phases: {
+      activador: {
+        title: 'Observación de ángulo detectada',
+        executor: 'skill',
+        executorDetail: 'nora-imagen-observacion',
+        stateIn: null,
+        stateOut: null,
+        description: 'El usuario deja una observación en NORA sobre ángulo de cámara ("desde arriba", "más de lado", "otro ángulo", etc.). El skill nora-imagen-observacion clasifica la observación como tipo "ángulo" y activa este pipeline en vez de regenerar desde cero.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'observacion', 'condicion', 'link_ren_1', 'origen'],
+          },
+          writes: {},
+          filters: ['condicion = observado', 'observacion contiene keywords de ángulo'],
+        },
+        steps: [
+          {
+            label: 'Detectar observación de ángulo',
+            resource: { type: 'skill', name: 'nora-imagen-observacion' },
+            description: 'Clasifica la observación. Si contiene keywords de ángulo/perspectiva/cámara → ruta multiangle.',
+            details: [
+              'Keywords: ángulo, desde arriba/abajo, lateral, girar, contrapicado, picado, más cerca/lejos, perspectiva',
+              'Diferencia clave: cambio de perspectiva (multiangle) vs cambio de contenido (duplicar+regenerar)',
+            ],
+          },
+        ],
+        meta: [
+          { icon: '👁️', label: 'Trigger', value: 'Observación de ángulo en cualquier creatividad de imagen' },
+        ],
+      },
+
+      lectura: {
+        title: 'Análisis visual de ángulo base',
+        executor: 'skill',
+        executorDetail: 'nora-imagen-observacion → nora-multiangle',
+        stateIn: null,
+        stateOut: null,
+        description: 'Analiza la imagen original con visión para detectar el ángulo de cámara actual (azimut, elevación, distancia). Este es el ángulo base sobre el que se aplican los cambios relativos.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['link_ren_1 (imagen a analizar)'],
+          },
+          writes: {},
+        },
+        steps: [
+          {
+            label: 'Análisis visual con prompt estructurado',
+            resource: { type: 'skill', name: 'Visión multimodal' },
+            description: 'Detecta azimut (8 posiciones), elevación (4 posiciones) y distancia (3 posiciones) de la imagen original.',
+            details: [
+              'Azimut: front, front-right quarter, right side, back-right quarter, back, back-left quarter, left side, front-left quarter',
+              'Elevación: low-angle shot, eye-level shot, elevated shot, high-angle shot',
+              'Distancia: close-up, medium shot, wide shot',
+            ],
+          },
+        ],
+        meta: [
+          { icon: '📐', label: 'Combinaciones', value: '96 ángulos posibles (8×4×3)' },
+        ],
+      },
+
+      procesamiento: {
+        title: 'Mapeo español → <sks> + INSERT creatividad',
+        executor: 'skill',
+        executorDetail: 'nora-imagen-observacion → nora-multiangle',
+        stateIn: null,
+        stateOut: 'para_ejecucion',
+        description: 'Interpreta la observación como cambio relativo al ángulo base detectado. Mapea a parámetros <sks> absolutos. Crea 1 creatividad nueva con origen=multiangle.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            creatividades: {
+              insert: [
+                'Copiar campos de original EXCEPTO id, created_at, link_ren_1, link_ren_2, observacion',
+                'prompt → string <sks> (ej: "<sks> right side view elevated shot close-up")',
+                'url → link_ren_1 de la original (imagen base)',
+                'origen → multiangle',
+                'estado → para_ejecucion',
+                'condicion → null',
+              ],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Interpretar cambio relativo',
+            resource: { type: 'skill', name: 'Mapeo español→<sks>' },
+            description: 'Ejes no mencionados mantienen ángulo base. "Más arriba" = subir un nivel de elevación, etc.',
+            details: [
+              'Formato: <sks> [azimut] view [elevación] [distancia]',
+              'Ejemplo: "desde la derecha, más arriba" → <sks> right side view elevated shot medium shot',
+            ],
+          },
+          {
+            label: 'INSERT creatividad multiangle',
+            resource: { type: 'supabase', name: 'INSERT creatividades', op: 'INSERT' },
+            description: 'Nueva creatividad con prompt <sks>, url = imagen original, origen = multiangle.',
+            stateChange: 'NULL → para_ejecucion',
+          },
+        ],
+        meta: [
+          { icon: '🔄', label: 'Versiones', value: '1 (no 2 como otros tipos de observación)' },
+        ],
+      },
+
+      ejecucion: {
+        title: 'ComfyUI: Qwen fp8mixed + Angles LoRA + Lightning',
+        executor: 'script',
+        executorDetail: 'comfy-multiangle.mjs',
+        stateIn: 'para_ejecucion',
+        stateOut: 'en_proceso',
+        description: 'El script toma la imagen base (url) y el prompt <sks>, genera la misma escena desde el ángulo solicitado. Resolución 1104×1472 (3:4 NORA). Lightning LoRA: 4 steps, ~35-40s.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'prompt', 'marca', 'url', 'estado', 'origen'],
+          },
+          writes: {
+            creatividades: {
+              update: ['estado → en_proceso (pickup)'],
+            },
+          },
+          filters: ['estado = para_ejecucion', 'origen = multiangle', 'prompt NOT NULL', 'url NOT NULL'],
+        },
+        steps: [
+          {
+            label: 'Pickup + mark en_proceso',
+            resource: { type: 'script', name: 'comfy-multiangle.mjs' },
+            description: 'PATCH estado → en_proceso para prevenir procesamiento duplicado.',
+            stateChange: 'para_ejecucion → en_proceso',
+          },
+          {
+            label: 'Cargar imagen desde URL',
+            resource: { type: 'comfyui', name: 'LoadImageFromUrlOrPath' },
+            description: 'Carga la imagen original directamente desde la URL de Supabase Storage.',
+          },
+          {
+            label: 'Escalar a 1104×1472',
+            resource: { type: 'comfyui', name: 'ImageScale (lanczos)' },
+            description: 'Resolución estándar NORA 3:4.',
+          },
+          {
+            label: 'UNETLoader + LoRA Angles + Lightning',
+            resource: { type: 'comfyui', name: 'qwen_image_edit_2511_fp8mixed + Angles LoRA + Lightning LoRA' },
+            description: 'fp8mixed obligatorio para compatibilidad con LoRAs. Lightning acelera de 20→4 steps.',
+          },
+          {
+            label: 'TextEncodeQwenImageEditPlus → KSampler',
+            resource: { type: 'comfyui', name: 'Encode + Sample (euler, cfg=1, 4 steps)' },
+            description: 'Prompt <sks> codificado con imagen de referencia. FluxKontextMultiReferenceLatentMethod preserva la escena.',
+          },
+          {
+            label: 'VAEDecode → SaveImage',
+            resource: { type: 'comfyui', name: 'Decode + Save' },
+            description: 'Decodifica latents y guarda como nora-multiangle_XXXXX.png.',
+          },
+        ],
+        meta: [
+          { icon: '🖥️', label: 'Hardware', value: 'PC-2 (RTX 5080 16GB) — ~35-40s por imagen' },
+          { icon: '🧠', label: 'Modelo', value: 'Qwen Image Edit 2511 fp8mixed (19.12 GB)' },
+          { icon: '🔧', label: 'LoRAs', value: 'Multiple Angles (281 MB) + Lightning 4-step (281 MB)' },
+          { icon: '📐', label: 'Resolución', value: '1104×1472 (3:4)' },
+          { icon: '⚡', label: 'Script', value: 'node comfy-multiangle.mjs --once [--id=N]' },
+        ],
+      },
+
+      entrega: {
+        title: 'Upload Storage + UPDATE creatividad',
+        executor: 'script',
+        executorDetail: 'comfy-multiangle.mjs',
+        stateIn: 'en_proceso',
+        stateOut: 'ejecutado',
+        description: 'Descarga imagen generada de ComfyUI vía HTTP, sube a Supabase Storage, actualiza link_ren_1 y transiciona a ejecutado.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            creatividades: {
+              update: ['link_ren_1 → URL pública de Storage', 'estado → ejecutado', 'condicion → para_revision'],
+            },
+          },
+          storage: ['{marca}_multiangle_{timestamp}.png → bucket creatividades'],
+        },
+        steps: [
+          {
+            label: 'Descargar de ComfyUI',
+            resource: { type: 'comfyui', name: 'GET /view' },
+            description: 'Descarga la imagen generada vía HTTP /view API.',
+          },
+          {
+            label: 'Upload a Storage',
+            resource: { type: 'supabase', name: 'POST storage/v1/object/creatividades/' },
+            description: 'Naming: {safeMarca}_multiangle_{timestamp}.png',
+          },
+          {
+            label: 'UPDATE creatividad',
+            resource: { type: 'supabase', name: 'PATCH creatividades', op: 'UPDATE' },
+            description: 'link_ren_1, estado → ejecutado, condicion → para_revision.',
+            stateChange: 'en_proceso → ejecutado (condicion: para_revision)',
+          },
+          {
+            label: 'Notificación Telegram',
+            resource: { type: 'telegram', name: 'sendMessage' },
+            description: 'Envía resumen con ángulo, seed y nombre de archivo.',
+          },
+        ],
+        meta: [
+          { icon: '💾', label: 'Storage', value: '{marca}_multiangle_{ts}.png' },
+        ],
+      },
+
+      observacion: {
+        title: 'Observación manual',
+        executor: 'skill',
+        executorDetail: 'nora-imagen-observacion',
+        manual: true,
+        optional: true,
+        stateIn: 'observado',
+        stateOut: 'para_ejecucion (nuevas) / para_revision (solo textos)',
+        description: 'Si el resultado no es satisfactorio, Jorge puede dejar otra observación. Si es de ángulo, vuelve a pasar por este pipeline. Si es de otro tipo, se procesa según corresponda.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'observacion', 'link_ren_1'],
+          },
+          writes: {
+            creatividades: {
+              insert: ['Nueva creatividad si requiere re-generación'],
+            },
+          },
+          filters: ['observacion NOT NULL', 'condicion = observado'],
+        },
+        steps: [
+          {
+            label: 'Re-clasificar observación',
+            resource: { type: 'skill', name: 'nora-imagen-observacion' },
+            description: 'Puede ser otro ajuste de ángulo o un tipo diferente de corrección.',
+          },
+        ],
+        meta: [
+          { icon: '👁️', label: 'Trigger', value: 'Jorge deja observación en NORA → condicion=observado' },
+        ],
+      },
+    },
+  },
+
+  // ============================================================
   // Pipeline 4: Pantalla · Imagen (16:9 para TVs)
   // ============================================================
   {
