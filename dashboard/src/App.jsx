@@ -9,6 +9,7 @@ import Legend from './components/Legend'
 import ScrollToTop from './components/ScrollToTop'
 
 import { universalPhases, pipelines, sharedDocs, phaseColors } from './data/pipeline'
+import { skills } from './data/skills'
 
 function App() {
   const [theme, setTheme] = useState(() => {
@@ -49,7 +50,7 @@ function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         pipelineCount={pipelines.length}
-        skillCount={6}
+        skillCount={skills.length}
         scriptCount={2}
         docCount={sharedDocs.length}
       />
