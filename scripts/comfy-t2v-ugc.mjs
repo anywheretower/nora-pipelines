@@ -107,7 +107,7 @@ function buildWorkflow(prompt, audioFilename, seed, duration, id) {
   w["320"] = { inputs: { video_latent: ["300", 0], audio_latent: ["314", 0] }, class_type: "LTXVConcatAVLatent" };
 
   w["400"] = { inputs: { noise_seed: seed }, class_type: "RandomNoise" };
-  w["401"] = { inputs: { model: ["101", 0], positive: ["202", 0], negative: ["202", 1], cfg: 1.5 }, class_type: "CFGGuider" };
+  w["401"] = { inputs: { model: ["101", 0], positive: ["202", 0], negative: ["202", 1], cfg: 1.2 }, class_type: "CFGGuider" };
   w["402"] = { inputs: { sampler_name: "euler_ancestral_cfg_pp" }, class_type: "KSamplerSelect" };
   w["403"] = { inputs: { sigmas: "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0" }, class_type: "ManualSigmas" };
   w["404"] = { inputs: { noise: ["400", 0], guider: ["401", 0], sampler: ["402", 0], sigmas: ["403", 0], latent_image: ["320", 0] }, class_type: "SamplerCustomAdvanced" };
