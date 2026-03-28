@@ -8,5 +8,8 @@
     "text2img:id": "node scripts/comfy-text2img.mjs --once --id",
     "postprod-ugc": "node scripts/postprod-ugc.mjs",
     "upscale-ugc": "node scripts/upscale-ugc.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.100.1"
   }
 }

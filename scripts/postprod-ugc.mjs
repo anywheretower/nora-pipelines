@@ -83,9 +83,11 @@ const removeWordsArg = args.find(a => a.startsWith('--remove-words='));
 const removeWordIndices = removeWordsArg ? removeWordsArg.split('=')[1].split(',').map(Number) : [];
 const videoScaleArg = args.find(a => a.startsWith('--video-scale='));
 const videoScale = videoScaleArg ? parseFloat(videoScaleArg.split('=')[1]) : null;
+const videoPosArg = args.find(a => a.startsWith('--video-pos='));
+const videoPos = videoPosArg ? videoPosArg.split('=')[1] : null;
 
 if (!creatividadId) {
-  console.error('Uso: node postprod-ugc.mjs --id=<ID> [--subs-bottom] [--subs-right] [--no-gradient] [--remove-words=2,5] [--video-scale=1.03]');
+  console.error('Uso: node postprod-ugc.mjs --id=<ID> [--subs-bottom] [--subs-right] [--no-gradient] [--remove-words=2,5] [--video-scale=1.03] [--video-pos="center 30%"]');
   process.exit(1);
 }
 
@@ -160,10 +162,18 @@ const WHISPER_FIXES = {
   'Paddle': 'pádel',
   'Centra': 'Cemtra',
   'centra': 'Cemtra',
+  'Messer': 'Meser',
+  'Messer,': 'Meser,',
+  'Messer.': 'Meser.',
+  'messer': 'Meser',
   'echo': 'Equos',
   'Echo': 'Equos',
   'echo.': 'Equos.',
   'Echo.': 'Equos.',
+  'ecos': 'Equos',
+  'Ecos': 'Equos',
+  'ecos.': 'Equos.',
+  'Ecos.': 'Equos.',
   'doctor': 'Doctor',
   'doctor.': 'Doctor.',
   'talca': 'Talca',
@@ -173,6 +183,14 @@ const WHISPER_FIXES = {
   'cumbres': 'Cumbres',
   'cumbres.': 'Cumbres.',
   'cumbres,': 'Cumbres,',
+  'perdí': 'perdía',
+  'Méser': 'Meser',
+  'Méser.': 'Meser.',
+  'Méser,': 'Meser,',
+  'méser': 'Meser',
+  'Mésor': 'Meser',
+  'Mésor.': 'Meser.',
+  'Mésor,': 'Meser,',
 };
 // Words to remove (Whisper hallucinates extra words)
 const WHISPER_REMOVE = new Set();
@@ -186,6 +204,8 @@ function whisperToSubtitleGroups(whisperJson, fps, removeWords = []) {
       let word = w.word.trim();
       // Apply fixes
       if (WHISPER_FIXES[word]) word = WHISPER_FIXES[word];
+      // Context fix: "perdía ahora" → "perdía horas"
+      if (word === 'ahora' && allWords.length > 0 && allWords[allWords.length - 1].word === 'perdía') word = 'horas';
       allWords.push({
         word,
         startFrame: Math.round(w.start * fps),
@@ -214,6 +234,16 @@ function whisperToSubtitleGroups(whisperJson, fps, removeWords = []) {
       startFrame: groupWords[0].startFrame,
       endFrame: nextGroupStart - GAP_FRAMES,
     });
+  }
+
+  // Ensure strictly monotonically increasing startFrames (Whisper can assign same timestamp)
+  for (let i = 1; i < groups.length; i++) {
+    if (groups[i].startFrame <= groups[i - 1].startFrame) {
+      groups[i].startFrame = groups[i - 1].startFrame + 1;
+    }
+    if (groups[i - 1].endFrame >= groups[i].startFrame) {
+      groups[i - 1].endFrame = groups[i].startFrame - 1;
+    }
   }
 
   log(`Parsed ${allWords.length} words into ${groups.length} subtitle groups`);
@@ -248,6 +278,7 @@ function generateCompositionTsx(compName, marca, id, groups, videoFile, audioFil
   const fontSize = is45 ? 50 : 60;
   const sideMargin = is45 ? 35 : 45;
   const objectFit = is45 ? 'objectFit: "cover",' : '';
+  const objectPosition = (is45 && opts.videoPos) ? `objectPosition: "${opts.videoPos}",` : '';
   const videoScaleStyle = (!is45 && opts.videoScale) ? `transform: "scale(${opts.videoScale})",` : '';
   const feedSuffix = is45 ? 'Feed' : '';
 
@@ -258,7 +289,7 @@ function generateCompositionTsx(compName, marca, id, groups, videoFile, audioFil
     : 'top: 150';
   const subsJustify = opts.subsRight ? 'flex-end' : 'flex-start';
   const showGradient = !opts.noGradient;
-  const gradientHeight = is45 ? '35%' : '40%';
+  const gradientHeight = is45 ? '35%' : '30%';
   const gradientPosition = atBottom ? 'bottom' : 'top';
   const gradientDirection = atBottom
     ? 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0) 100%)'
@@ -328,9 +359,11 @@ const KaraokeSubtitle: React.FC<{ group: SubtitleGroup }> = ({ group }) => {
   const frame = useCurrentFrame();
   const absoluteFrame = frame + group.startFrame;
 
+  const dur = group.endFrame - group.startFrame;
+  const fadeOut = Math.max(dur - 8, 6);
   const blockOpacity = interpolate(
     frame,
-    [0, 5, group.endFrame - group.startFrame - 8, group.endFrame - group.startFrame],
+    [0, 5, fadeOut, dur],
     [0, 1, 1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );
@@ -423,7 +456,7 @@ export const ${compName}${feedSuffix}: React.FC<${compName}${feedSuffix}Props> =
         <AbsoluteFill>
           <OffthreadVideo
             src={staticFile(\`videos/\${videoFile}\`)}
-            style={{ width: "100%", height: "100%", ${objectFit} ${videoScaleStyle} }}
+            style={{ width: "100%", height: "100%", ${objectFit} ${objectPosition} ${videoScaleStyle} }}
             muted
             startFrom={posterFrame}
             endAt={posterFrame + 1}
@@ -452,7 +485,7 @@ ${posterWordsCode}
         <AbsoluteFill style={{ opacity: videoOpacity }}>
           <OffthreadVideo
             src={staticFile(\`videos/\${videoFile}\`)}
-            style={{ width: "100%", height: "100%", ${objectFit} ${videoScaleStyle} }}
+            style={{ width: "100%", height: "100%", ${objectFit} ${objectPosition} ${videoScaleStyle} }}
             muted
           />${showGradient ? `
           <div
@@ -695,7 +728,7 @@ async function main() {
   log(`Pack de cierre: ${finalPackProps.logoFile}`);
 
   // 7. Generate TSX files
-  const tsxOpts = { subsBottom, subsRight, noGradient, videoScale };
+  const tsxOpts = { subsBottom, subsRight, noGradient, videoScale, videoPos };
   const tsx916 = generateCompositionTsx(compName, marca, creatividadId, groups, `ugc_${creatividadId}.mp4`, `ugc_${creatividadId}.wav`, finalPackProps, false, tsxOpts);
   const tsx45 = generateCompositionTsx(compName, marca, creatividadId, groups, `ugc_${creatividadId}.mp4`, `ugc_${creatividadId}.wav`, finalPackProps, true, tsxOpts);
 
@@ -807,8 +840,8 @@ async function main() {
   // 13. Upload to Supabase Storage
   const slug = marca.toLowerCase().replace(/[^a-z0-9]/g, '_');
   const ts = Date.now();
-  const url916 = await uploadToStorage(local916, `creatividades/${slug}_ugc_${creatividadId}_916.mp4`);
-  const url45 = await uploadToStorage(local45, `creatividades/${slug}_ugc_${creatividadId}_45.mp4`);
+  const url916 = await uploadToStorage(local916, `creatividades/${slug}_ugc_${creatividadId}_916_${ts}.mp4`);
+  const url45 = await uploadToStorage(local45, `creatividades/${slug}_ugc_${creatividadId}_45_${ts}.mp4`);
 
   // 14. Create final creatividad
   const newId = await createCreatividadFinal(marca, url45, url916, crea);

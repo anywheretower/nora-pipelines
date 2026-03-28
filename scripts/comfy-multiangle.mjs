@@ -273,6 +273,12 @@ function buildWorkflow(imageUrl, anglePromptStr, seed) {
 
 // --- Supabase functions ---
 
+const supaHeaders = {
+  apikey: KEY,
+  Authorization: `Bearer ${KEY}`,
+  'Content-Type': 'application/json'
+};
+
 async function updateCreatividad(id, imageUrl) {
   const r = await fetch(`${SUPA}/rest/v1/creatividades?id=eq.${id}`, {
     method: 'PATCH',
