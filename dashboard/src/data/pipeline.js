@@ -2498,7 +2498,7 @@ export const pipelines = [
         executorDetail: 'postprod-ugc.mjs',
         stateIn: 'aprobado',
         stateOut: null,
-        description: 'Tras aprobación humana: descarga video upscaleado (1152×2048), Remotion escala a 1080p. Transcribe audio (Whisper CUDA), render dual (9:16 + 4:5) con subtítulos karaoke y pack de cierre. Flags: --subs-bottom, --subs-right, --no-gradient, --remove-words=N.',
+        description: 'Tras aprobación humana: descarga video upscaleado (1152×2048), Remotion escala a 1080p. Transcribe audio (Whisper CUDA), render dual (9:16 + 4:5) con subtítulos karaoke y pack de cierre. Flags: --subs-bottom, --subs-right, --no-gradient, --remove-words=N, --video-pos="center 20%", --video-scale=1.03.',
         manual: true,
         supabaseFields: {
           reads: {
@@ -2539,7 +2539,11 @@ export const pipelines = [
               '--subs-right: alinear subtítulos a la derecha (variación entre videos)',
               '--no-gradient: sin degradado detrás de subs',
               '--remove-words=N: eliminar palabras de Whisper por índice',
-              'Whisper fixes: mapa WHISPER_FIXES para errores comunes (paddle→pádel, Centra→Cemtra, doctor→Doctor)',
+              '--video-pos="center 20%": ajustar crop vertical en 4:5 (objectPosition)',
+              '--video-scale=1.03: zoom sutil en 9:16',
+              'Degradado: 30% alto en 9:16, 35% en 4:5 (no tapa cabeza)',
+              'inputRange monotónico: fix automático si Whisper asigna mismo timestamp a grupos consecutivos',
+              'Whisper fixes: WHISPER_FIXES para errores comunes (Messer→Meser, Centra→Cemtra, echo/Ecos→Equos, paddle→pádel, doctor→Doctor)',
               'Poster frame: frame 60, primera frase visible',
               'Pack de cierre: logo + URL por marca (PACK_PROPS), URL 50px',
             ],
@@ -2547,7 +2551,7 @@ export const pipelines = [
           {
             label: 'Render 9:16 + 4:5',
             resource: { type: 'script', name: 'postprod-ugc.mjs → ssh remotion render' },
-            description: 'Remotion render dual: 1080×1920 (9:16) + 1080×1350 (4:5, objectFit cover).',
+            description: 'Remotion render dual: 1080×1920 (9:16) + 1080×1350 (4:5, objectFit cover, objectPosition configurable con --video-pos).',
           },
           {
             label: 'Verificar audio',
