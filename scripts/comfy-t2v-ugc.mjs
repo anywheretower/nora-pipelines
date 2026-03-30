@@ -2,10 +2,11 @@
  * NORA — Text-to-Video UGC (LTX-Video 2.3 con audio + RTX upscale)
  * Genera video vía ComfyUI remoto (PC-2), merge audio, upscale RTX x2, sube a Supabase Storage.
  *
- * Uso: node comfy-t2v-ugc.mjs [--once] [--id=123] [--max=1]
- *   --once    Procesa lo pendiente y sale (no hace polling)
- *   --id=123  Procesa solo esa creatividad
- *   --max=N   Máximo N videos por corrida (default: 1, por VRAM leak con LTX)
+ * Uso: node comfy-t2v-ugc.mjs [--once] [--id=123] [--max=1] [--multipass]
+ *   --once       Procesa lo pendiente y sale (no hace polling)
+ *   --id=123     Procesa solo esa creatividad
+ *   --max=N      Máximo N videos por corrida (default: 1, por VRAM leak con LTX)
+ *   --multipass  Activa 2do y 3er paso de sampling para mayor calidad (más lento)
  *
  * La creatividad debe tener:
  *   - prompt: texto para LTX-Video 2.3
@@ -52,10 +53,13 @@ const supaHeaders = {
 // --- Parse args ---
 const args = process.argv.slice(2);
 const once = args.includes('--once');
+const multipass = args.includes('--multipass');
 const idArg = args.find(a => a.startsWith('--id='));
 const onlyId = idArg ? parseInt(idArg.split('=')[1]) : null;
 const maxArg = args.find(a => a.startsWith('--max='));
 const MAX_PER_RUN = maxArg ? parseInt(maxArg.split('=')[1]) : 1; // VRAM leak safety — LTX needs restart after each
+const seedArg = args.find(a => a.startsWith('--seed='));
+const forcedSeed = seedArg ? parseInt(seedArg.split('=')[1]) : null;
 
 function log(msg) {
   const ts = new Date().toLocaleTimeString('es-CL', { hour12: false });
@@ -72,7 +76,7 @@ function randomSeed() {
 // Workflow builder — LTX-Video 2.3 con audio
 // =============================================================
 
-function buildWorkflow(prompt, audioFilename, seed, duration, id) {
+function buildWorkflow(prompt, audioFilename, seed, duration, id, enableMultipass = false) {
   const FPS = 24;
   const WIDTH = 576;
   const HEIGHT = 1024;
@@ -112,15 +116,40 @@ function buildWorkflow(prompt, audioFilename, seed, duration, id) {
   w["403"] = { inputs: { sigmas: "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0" }, class_type: "ManualSigmas" };
   w["404"] = { inputs: { noise: ["400", 0], guider: ["401", 0], sampler: ["402", 0], sigmas: ["403", 0], latent_image: ["320", 0] }, class_type: "SamplerCustomAdvanced" };
 
-  // Separate AV latent
+  // Separate AV latent (pass 1)
   w["410"] = { inputs: { av_latent: ["404", 0] }, class_type: "LTXVSeparateAVLatent" };
 
   // Save video latent for later upscale (only video, not AV — NestedTensor can't be saved)
   w["411"] = { inputs: { samples: ["410", 0], filename_prefix: `LTX-2.3/ugc_${id}_latent` }, class_type: "SaveLatent" };
 
+  // The node whose output feeds into decode — changes based on multipass
+  let finalVideoLatentNode = "410";
+  let finalAudioLatentNode = "410";
+
+  if (enableMultipass) {
+    // === PASS 2: Refine with 0.6 denoise, 6 steps ===
+    w["500"] = { inputs: { video_latent: ["410", 0], audio_latent: ["314", 0] }, class_type: "LTXVConcatAVLatent" };
+    w["501"] = { inputs: { noise_seed: seed + 1 }, class_type: "RandomNoise" };
+    w["502"] = { inputs: { sampler_name: "euler_ancestral_cfg_pp" }, class_type: "KSamplerSelect" };
+    w["503"] = { inputs: { sigmas: "0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0" }, class_type: "ManualSigmas" };
+    w["504"] = { inputs: { noise: ["501", 0], guider: ["401", 0], sampler: ["502", 0], sigmas: ["503", 0], latent_image: ["500", 0] }, class_type: "SamplerCustomAdvanced" };
+    w["510"] = { inputs: { av_latent: ["504", 0] }, class_type: "LTXVSeparateAVLatent" };
+
+    // === PASS 3: Final polish with 0.3 denoise, 4 steps ===
+    w["600"] = { inputs: { video_latent: ["510", 0], audio_latent: ["314", 0] }, class_type: "LTXVConcatAVLatent" };
+    w["601"] = { inputs: { noise_seed: seed + 2 }, class_type: "RandomNoise" };
+    w["602"] = { inputs: { sampler_name: "euler_ancestral_cfg_pp" }, class_type: "KSamplerSelect" };
+    w["603"] = { inputs: { sigmas: "0.3, 0.2, 0.1, 0.0" }, class_type: "ManualSigmas" };
+    w["604"] = { inputs: { noise: ["601", 0], guider: ["401", 0], sampler: ["602", 0], sigmas: ["603", 0], latent_image: ["600", 0] }, class_type: "SamplerCustomAdvanced" };
+    w["610"] = { inputs: { av_latent: ["604", 0] }, class_type: "LTXVSeparateAVLatent" };
+
+    finalVideoLatentNode = "610";
+    finalAudioLatentNode = "610";
+  }
+
   // === DECODE ===
-  w["700"] = { inputs: { samples: ["410", 0], vae: ["102", 0], tile_size: 512, overlap: 64, temporal_size: 512, temporal_overlap: 4 }, class_type: "VAEDecodeTiled" };
-  w["701"] = { inputs: { samples: ["410", 1], audio_vae: ["103", 0] }, class_type: "LTXVAudioVAEDecode" };
+  w["700"] = { inputs: { samples: [finalVideoLatentNode, 0], vae: ["102", 0], tile_size: 512, overlap: 64, temporal_size: 512, temporal_overlap: 4 }, class_type: "VAEDecodeTiled" };
+  w["701"] = { inputs: { samples: [finalAudioLatentNode, 1], audio_vae: ["103", 0] }, class_type: "LTXVAudioVAEDecode" };
 
   // === OUTPUT ===
   w["800"] = {
@@ -460,10 +489,10 @@ async function processOne(creatividad) {
   const comfyAudioName = await uploadAudioToComfyUI(audioBuffer, audioFilename);
 
   // 5. Build workflow and queue
-  const seed = randomSeed();
-  const workflow = buildWorkflow(prompt, comfyAudioName, seed, duration, id);
+  const seed = forcedSeed ?? randomSeed();
+  const workflow = buildWorkflow(prompt, comfyAudioName, seed, duration, id, multipass);
   const promptId = await queuePrompt(workflow);
-  log(`  ⏳ Queued (${promptId.substring(0, 8)}...) seed=${seed} duration=${duration.toFixed(1)}s`);
+  log(`  ⏳ Queued (${promptId.substring(0, 8)}...) seed=${seed} duration=${duration.toFixed(1)}s${multipass ? ' [MULTIPASS 3 pasos]' : ''}`);
 
   // 6. Wait for video completion
   const videoInfo = await waitForCompletion(promptId);
@@ -504,7 +533,7 @@ async function processOne(creatividad) {
 const stats = { ok: 0, fail: 0 };
 
 async function run() {
-  log('🎬 NORA Text-to-Video UGC — Iniciando');
+  log(`🎬 NORA Text-to-Video UGC — Iniciando${multipass ? ' [MULTIPASS: 3 pasos de sampling]' : ''}`);
 
   // Check ComfyUI is alive
   try {
