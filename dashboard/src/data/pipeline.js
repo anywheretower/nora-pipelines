@@ -2624,6 +2624,415 @@ export const pipelines = [
       },
     },
   },
+
+  // Pipeline 7: Text-to-Video Pixar (LTX-Video 2.3 + Cartesia TTS, estilo animación 3D)
+  // ============================================================
+  {
+    id: 'text2video-pixar',
+    title: 'Text-to-Video · Pixar',
+    subtitle: 'Video animado 3D estilo Pixar con voz Cartesia TTS + LTX-Video 2.3',
+    command: '/nora-video-pixar',
+    status: 'activo',
+
+    executionBlocks: [
+      {
+        executor: 'usuario',
+        label: 'Usuario',
+        phases: ['activador'],
+        handoff: 'invoca skill',
+      },
+      {
+        executor: 'skill',
+        label: 'Skill: nora-video-pixar',
+        phases: ['lectura', 'procesamiento'],
+        handoff: 'ejecuta script via Bash',
+      },
+      {
+        executor: 'script',
+        label: 'Script: comfy-t2v-pixar.mjs',
+        phases: ['ejecucion', 'entrega'],
+        handoff: 'creatividad para_revision → espera aprobación',
+      },
+      {
+        executor: 'usuario',
+        label: 'Revisión humana',
+        phases: ['observacion'],
+        handoff: 'aprueba creatividad → post-producción',
+      },
+      {
+        executor: 'script',
+        label: 'Script: postprod-ugc.mjs',
+        phases: ['postprod', 'entrega_final'],
+        handoff: 'creatividad final con subs + pack',
+      },
+    ],
+
+    phases: {
+      activador: {
+        title: 'Instrucción directa',
+        executor: 'usuario',
+        stateIn: null,
+        stateOut: null,
+        description: 'El usuario invoca /nora-video-pixar indicando la marca y dirección creativa. Contenido estilo Pixar: tierno, familiar, lúdico.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Instrucción del usuario',
+            resource: { type: 'usuario', name: 'Terminal Claude Code' },
+            description: 'El usuario indica marca, modalidad (personaje/objeto/escena) y dirección creativa.',
+            details: [
+              'marca — Nombre exacto en Supabase (obligatorio)',
+              'modalidad — Personaje hablando, objeto animado, escena + voz en off',
+              'escenario — Entorno 3D animado (bus, terminal, paisaje, hogar)',
+              'tono — Tierno, lúdico, familiar, inspirador',
+            ],
+          },
+          {
+            label: 'Cargar variables de entorno',
+            resource: { type: 'env', name: '.env' },
+            description: 'Se exportan las variables del archivo .env del proyecto.',
+            details: [
+              'SUPABASE_URL',
+              'SUPABASE_SERVICE_ROLE_KEY',
+              'COMFY_URL',
+              'CARTESIA_API_KEY',
+            ],
+          },
+        ],
+      },
+
+      lectura: {
+        title: 'Identidad de marca',
+        executor: 'skill',
+        executorDetail: 'nora-video-pixar',
+        stateIn: null,
+        stateOut: null,
+        description: 'Se lee la ficha completa de la marca para generar un concepto y libreto coherentes con estilo Pixar.',
+        supabaseFields: {
+          reads: {
+            marcas: ['ficha', 'arquetipo', 'buyer_persona', 'notas_generales', 'contenido_prohibido'],
+          },
+          writes: {},
+        },
+        steps: [
+          {
+            label: 'Leer identidad de marca',
+            resource: { type: 'supabase', name: 'READ marcas', op: 'READ' },
+            description: 'Ficha completa: identidad, arquetipo, buyer_persona, paleta, look & feel.',
+            details: [
+              'ficha — contexto estratégico',
+              'arquetipo — personalidad de marca',
+              'buyer_persona — público objetivo',
+              'notas_generales — reglas específicas',
+              'contenido_prohibido — filtro negativo',
+            ],
+            filter: 'marca = {marca}',
+          },
+        ],
+      },
+
+      procesamiento: {
+        title: 'Concepto + Libreto + Voz + Prompt Pixar + INSERT',
+        executor: 'skill',
+        executorDetail: 'nora-video-pixar',
+        stateIn: null,
+        stateOut: 'para_ejecucion',
+        description: '5 sub-pasos: concepto Pixar (modalidad flexible), libreto corto (~15-25 palabras), voz Cartesia TTS (WAV, speed normal), prompt LTX estilo 3D animado, INSERT creatividad.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: ['{marca}_pixar_audio_{timestamp}.wav → bucket creatividades (audio Cartesia)'],
+            creatividades: {
+              insert: [
+                'marca', 'estado → para_ejecucion', 'origen → pixar', 'condicion → null',
+                'prompt → texto LTX Pixar en inglés', 'url → audio WAV en Storage',
+                'concepto', 'slogan_headline', 'copy',
+              ],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Concepto Pixar',
+            resource: { type: 'skill', name: 'nora-video-pixar' },
+            description: 'Definir modalidad, escenario 3D, personaje/objeto animado y tono emocional.',
+            details: [
+              'Modalidad: personaje hablando, objeto animado, escena + voz en off',
+              'Escenario: entornos 3D estilizados (bus colorido, terminal animada, paisaje)',
+              'Personaje: rasgos Pixar (ojos grandes, features redondeados, expresivos)',
+              'Tono: tierno, lúdico, familiar, inspirador',
+            ],
+          },
+          {
+            label: 'Escribir libreto',
+            resource: { type: 'skill', name: 'nora-video-pixar' },
+            description: 'Texto de 15-25 palabras (~5-8 segundos). Más corto y punch que UGC. Hook → Emoción → CTA.',
+          },
+          {
+            label: 'Generar voz Cartesia TTS',
+            resource: { type: 'api', name: 'Cartesia Sonic 3' },
+            description: 'Genera WAV 44100Hz mono via API. Sube a Supabase Storage.',
+            details: [
+              'Modelo: sonic-3',
+              'Voces prioritarias: Victor/Titi (niño), Oliver/Alanys/Vivi (joven) — tono lúdico',
+              'Speed: "normal" (más energético que UGC)',
+              'Formato: WAV 44100Hz mono',
+              'Silencio final: +1s automático (ffmpeg apad)',
+            ],
+          },
+          {
+            label: 'Construir prompt LTX Pixar',
+            resource: { type: 'skill', name: 'nora-prompt-ltxvideo' },
+            description: 'Párrafo fluido en inglés con directivas de animación 3D. Sin terminología fotorrealista.',
+            details: [
+              'Prefix: 3D Pixar-style animated, CGI render, bright daylight, stylized features',
+              'Sujeto → Acción → Escena → Expresión → Movimiento animado',
+              'Suffix: vivid saturated colors, 4K sharpness, Pixar Dreamworks quality',
+              'Negativos: live action, realistic, photographic, uncanny valley, low poly, flat shading',
+              'NUNCA incluir: iPhone, ARRI, Kodak, ProRes, shallow depth of field',
+            ],
+          },
+          {
+            label: 'Insertar creatividad',
+            resource: { type: 'supabase', name: 'INSERT creatividades', op: 'INSERT' },
+            description: 'Creatividad con prompt Pixar, audio URL y campos de copy.',
+            details: [
+              'estado: para_ejecucion',
+              'origen: pixar',
+              'prompt: texto LTX Pixar en inglés',
+              'url: audio WAV en Supabase Storage',
+              'concepto, slogan_headline, copy',
+            ],
+            stateChange: 'NULL → para_ejecucion',
+          },
+        ],
+      },
+
+      ejecucion: {
+        title: 'ComfyUI remoto — LTX-Video 2.3 Pixar + RTX Upscale',
+        executor: 'script',
+        executorDetail: 'comfy-t2v-pixar.mjs',
+        stateIn: 'para_ejecucion',
+        stateOut: null,
+        description: 'Mismo flujo que UGC pero con prompt wrapping Pixar, CFG 1.3, LoRA 0.3, y multipass por defecto. El script transforma el prompt automáticamente (salvo --raw).',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'prompt', 'marca', 'url', 'concepto'],
+          },
+          writes: {
+            creatividades: {
+              update_on_pickup: ['estado → en_proceso'],
+              update_on_error: ['estado → error', 'observacion → [auto] mensaje de error'],
+            },
+          },
+          filters: ['estado = para_ejecucion', 'origen = pixar', 'prompt NOT NULL', 'url NOT NULL'],
+        },
+        steps: [
+          {
+            label: 'Descargar audio + pad silencio',
+            resource: { type: 'script', name: 'comfy-t2v-pixar.mjs → fetch audio + ffmpeg apad' },
+            description: 'Descarga WAV desde Supabase y añade 1s de silencio al final.',
+          },
+          {
+            label: 'Subir audio a ComfyUI',
+            resource: { type: 'script', name: 'comfy-t2v-pixar.mjs → POST /upload/image' },
+            description: 'ComfyUI acepta WAV en /upload/image.',
+          },
+          {
+            label: 'Enviar workflow LTX 2.3 (Pixar)',
+            resource: { type: 'script', name: 'comfy-t2v-pixar.mjs → POST /prompt' },
+            description: 'Workflow LTX 2.3 con prompt wrapping Pixar + audio lip-sync + multipass 3 pasos.',
+            details: [
+              'Modelo: ltx-2-3-22b-dev-Q4_K_M.gguf',
+              'LoRA distilled: 0.3 (reducida para no competir con estilo Pixar)',
+              'Sampler: euler_ancestral_cfg_pp, CFG 1.3',
+              'Multipass: ON por defecto (8 + 6 + 4 steps)',
+              'Resolución: 576×1024 (9:16), 24fps',
+              'Prompt wrapping: prefix + suffix Pixar automático',
+              'SaveLatent: pixar_{id}_latent en PC-2',
+            ],
+          },
+          {
+            label: 'Esperar generación LTX',
+            resource: { type: 'script', name: 'comfy-t2v-pixar.mjs → poll /history' },
+            description: 'Polling cada 5s hasta output. Timeout 15 min. Más largo con multipass (~15-20 min).',
+          },
+          {
+            label: 'Descargar video + merge audio',
+            resource: { type: 'script', name: 'comfy-t2v-pixar.mjs → GET /view + ffmpeg' },
+            description: 'Descarga MP4 (576×1024) y mergea audio Cartesia original.',
+          },
+          {
+            label: 'RTX Video SuperResolution x2',
+            resource: { type: 'script', name: 'comfy-t2v-pixar.mjs → RTX upscale' },
+            description: 'Sube video a ComfyUI y ejecuta RTX upscale NVIDIA TensorRT.',
+            details: [
+              'Scale: x2, Quality: ULTRA',
+              '576×1024 → 1152×2048',
+              '~26 segundos',
+            ],
+          },
+          {
+            label: 'Esperar RTX upscale',
+            resource: { type: 'script', name: 'comfy-t2v-pixar.mjs → poll /history' },
+            description: 'Polling cada 5s. Timeout 10 min.',
+          },
+          {
+            label: 'Descargar video upscaleado',
+            resource: { type: 'script', name: 'comfy-t2v-pixar.mjs → GET /view' },
+            description: 'Descarga MP4 upscaleado (1152×2048) desde ComfyUI.',
+          },
+        ],
+        meta: [
+          { icon: '⚙️', label: 'Hardware', value: 'PC-2: RTX 5080 16GB, 192.168.1.26:8188' },
+          { icon: '⏱️', label: 'Tiempo', value: '~15-20 min/video (multipass default + RTX ~26s)' },
+          { icon: '⚠️', label: 'Límite', value: 'Máx 1 video por corrida (VRAM leak)' },
+          { icon: '🎨', label: 'Estilo', value: 'Prompt wrapping Pixar + CFG 1.3 + LoRA 0.3' },
+        ],
+      },
+
+      entrega: {
+        title: 'Upload Storage + actualizar creatividad',
+        executor: 'script',
+        executorDetail: 'comfy-t2v-pixar.mjs',
+        stateIn: 'para_ejecucion',
+        stateOut: 'base_lista',
+        description: 'El video upscaleado (1152×2048) con audio se sube a Supabase Storage y se actualiza la creatividad.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: ['{marca}_pixar_{timestamp}.mp4 → bucket creatividades (video upscaleado 1152×2048)'],
+            creatividades: {
+              update: ['link_ren_1 → URL pública video upscaleado', 'link_ren_2 → URL pública video upscaleado', 'estado → base_lista', 'condicion → para_revision'],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Subir video upscaleado a Storage',
+            resource: { type: 'supabase', name: 'INSERT storage', op: 'INSERT' },
+            description: 'Upload del video upscaleado (1152×2048) al bucket "creatividades".',
+            details: ['Nombre: creatividades/{marca}_pixar_{timestamp}.mp4'],
+          },
+          {
+            label: 'Actualizar creatividad',
+            resource: { type: 'supabase', name: 'UPDATE creatividades', op: 'UPDATE' },
+            description: 'Registra la URL del video upscaleado y cambia el estado.',
+            details: [
+              'link_ren_1 → URL pública del video upscaleado 1152×2048',
+              'link_ren_2 → URL pública del video upscaleado 1152×2048',
+              'estado → base_lista',
+              'condicion → para_revision',
+            ],
+            stateChange: 'para_ejecucion → base_lista',
+          },
+        ],
+      },
+
+      postprod: {
+        title: 'Post-producción Remotion (Whisper + subs + pack)',
+        executor: 'script',
+        executorDetail: 'postprod-ugc.mjs',
+        stateIn: 'aprobado',
+        stateOut: null,
+        description: 'Reutiliza postprod-ugc.mjs tal cual. Tras aprobación: Whisper + subtítulos karaoke + pack de cierre + render dual.',
+        manual: true,
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'link_ren_1', 'link_ren_2', 'url', 'prompt', 'concepto', 'copy', 'slogan_headline'],
+          },
+          writes: {},
+        },
+        steps: [
+          {
+            label: 'Descargar video base + audio',
+            resource: { type: 'script', name: 'postprod-ugc.mjs → fetch' },
+            description: 'Descarga video upscaleado 1152×2048 (link_ren_1) y audio (url).',
+          },
+          {
+            label: 'Copiar assets a PC-2',
+            resource: { type: 'script', name: 'postprod-ugc.mjs → scp' },
+            description: 'SCP: video + audio → remotion-nora/public/ en PC-2.',
+          },
+          {
+            label: 'Transcribir con Whisper',
+            resource: { type: 'script', name: 'postprod-ugc.mjs → ssh whisper' },
+            description: 'Whisper small en PC-2 (CUDA). Output: JSON con timestamps word-by-word.',
+          },
+          {
+            label: 'Generar TSX + render dual',
+            resource: { type: 'script', name: 'postprod-ugc.mjs → Remotion' },
+            description: 'Genera composiciones TSX, render 1080×1920 (9:16) + 1080×1350 (4:5) con subs karaoke y pack de cierre.',
+          },
+          {
+            label: 'Verificar audio',
+            resource: { type: 'script', name: 'postprod-ugc.mjs → ssh ffmpeg volumedetect' },
+            description: 'mean_volume entre -5 y -30 dB.',
+          },
+        ],
+        meta: [
+          { icon: '⚙️', label: 'Hardware', value: 'PC-2: RTX 5080 16GB (Whisper CUDA + Remotion)' },
+          { icon: '⏱️', label: 'Tiempo', value: '~3-5 min (whisper ~30s + 2 renders ~2min c/u)' },
+          { icon: '🎬', label: 'Output', value: '2 videos: 1080×1920 (9:16) + 1080×1350 (4:5)' },
+          { icon: '🔤', label: 'Subtítulos', value: 'Karaoke word-level, Montserrat Bold 60/50px' },
+        ],
+      },
+
+      entrega_final: {
+        title: 'Upload dual + creatividad final',
+        executor: 'script',
+        executorDetail: 'postprod-ugc.mjs',
+        stateIn: null,
+        stateOut: 'ejecutado',
+        description: 'Sube ambos videos a Supabase Storage y crea creatividad nueva con link_ren_1 (4:5) y link_ren_2 (9:16).',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: [
+              '{marca}_pixar_{timestamp}_916.mp4 → bucket creatividades (9:16 stories)',
+              '{marca}_pixar_{timestamp}_45.mp4 → bucket creatividades (4:5 feed)',
+            ],
+            creatividades: {
+              insert: [
+                'marca', 'estado → ejecutado', 'origen → pixar', 'condicion → para_revision',
+                'link_ren_1 → video 4:5 (feed)', 'link_ren_2 → video 9:16 (stories)',
+                'prompt, concepto, copy, slogan_headline → heredados de creatividad base',
+              ],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Descargar renders de PC-2',
+            resource: { type: 'script', name: 'postprod-ugc.mjs → scp' },
+            description: 'SCP inverso: videos renderizados → Mac local.',
+          },
+          {
+            label: 'Upload video 9:16',
+            resource: { type: 'supabase', name: 'UPSERT storage', op: 'UPSERT' },
+            description: 'creatividades/{marca}_pixar_{id}_916.mp4 → link_ren_2 (PUT x-upsert)',
+          },
+          {
+            label: 'Upload video 4:5',
+            resource: { type: 'supabase', name: 'UPSERT storage', op: 'UPSERT' },
+            description: 'creatividades/{marca}_pixar_{id}_45.mp4 → link_ren_1 (PUT x-upsert)',
+          },
+          {
+            label: 'Crear creatividad final',
+            resource: { type: 'supabase', name: 'INSERT creatividades', op: 'INSERT' },
+            description: 'Nueva creatividad con ambos links, hereda prompt/concepto/copy de la original.',
+            details: [
+              'link_ren_1 → 4:5 (feed)',
+              'link_ren_2 → 9:16 (stories/TikTok)',
+              'origen: pixar',
+              'condicion: para_revision',
+            ],
+            stateChange: 'NULL → ejecutado',
+          },
+        ],
+      },
+    },
+  },
 ]
 
 
