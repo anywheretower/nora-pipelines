@@ -199,6 +199,24 @@ export const skills = [
     deps: '↓ alimenta a nora-video-ugc + nora-video-pixar',
     path: '/Users/imac/Desktop/noracode/.agents/skills/nora-prompt-ltxvideo/SKILL.md',
   },
+  {
+    id: 'carrusel',
+    title: 'carrusel',
+    badge: 'Carrusel',
+    badgeClass: 'badge-gen',
+    status: 'active',
+    description: 'Genera carruseles Instagram como HTML swipeable con export a PNG 1080×1350px via Playwright. Lee marca → deriva colores (6 tokens) → genera contenido (7 tipos de slide, 5 fondos, 7 layouts) → compone HTML → exporta PNGs → sube a NORA via carrusel-upload.js.',
+    meta: [
+      { icon: '⚡', label: 'Activa', value: 'bajo demanda — /carrusel' },
+      { icon: '📤', label: 'Entrega', value: 'carrusel en tabla carruseles + slides PNG en Storage' },
+      { icon: '🔧', label: 'Scripts', value: 'carrusel-brand.js (lectura), carrusel-upload.js (entrega), carrusel-publish.js (publicación)' },
+      { icon: '📋', label: 'Escribe', value: 'carruseles + carrusel_slides (NO creatividades)' },
+      { icon: '🖥️', label: 'Motor', value: 'Playwright chromium (Mac local, sin GPU)' },
+    ],
+    rev: 'Rev: 2026-04-12',
+    deps: '← Playwright (chromium) + carrusel-brand.js + carrusel-upload.js',
+    path: '/Users/imac/.claude/skills/carrusel/SKILL.md',
+  },
 ]
 
 export const scriptCards = [
@@ -219,6 +237,40 @@ export const scriptCards = [
     rev: 'Pipeline: paso 4 → paso 5 + para_revision',
     deps: 'Requiere: ComfyUI corriendo en PC-2',
     path: '/Users/imac/Desktop/noracode/nora-pipelines/scripts/comfy-text2img.mjs',
+  },
+  {
+    id: 'carrusel-upload',
+    title: 'carrusel-upload.js',
+    badge: 'Script',
+    badgeClass: 'badge-script',
+    status: 'active',
+    description: 'Sube PNGs exportados a Supabase Storage y crea registros en carruseles + carrusel_slides. Lee directorio de slides, ordena por número, sube cada PNG y crea los registros correspondientes con estado listo.',
+    meta: [
+      { icon: '🔧', label: 'Uso', value: 'node scripts/carrusel-upload.js --dir "/ruta/slides" --marca "Marca" --titulo "..." --copy "..."' },
+      { icon: '💾', label: 'Storage', value: 'bucket creatividades: carrusel-{id}-slide-{n}-{ts}.png' },
+      { icon: '📋', label: 'Escribe', value: 'carruseles (INSERT) + carrusel_slides (INSERT por slide)' },
+      { icon: '🔄', label: 'Estado', value: 'NULL → listo (template_id: html-skill)' },
+    ],
+    rev: 'Pipeline: local → listo',
+    deps: 'Requiere: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY',
+    path: '/Users/imac/Desktop/noracode/nora/scripts/carrusel-upload.js',
+  },
+  {
+    id: 'carrusel-publish',
+    title: 'carrusel-publish.js',
+    badge: 'Script',
+    badgeClass: 'badge-script',
+    status: 'active',
+    description: 'Publica carrusel a Instagram, Facebook y/o LinkedIn via GetLate API. Lee slides del carrusel, obtiene cuentas GetLate de la marca, envía multi-imagen a cada red seleccionada y actualiza estado a publicado.',
+    meta: [
+      { icon: '🔧', label: 'Uso', value: 'node scripts/carrusel-publish.js --carrusel-id 42 --redes instagram,facebook,linkedin' },
+      { icon: '📡', label: 'API', value: 'GetLate v1 — requiere getlate_accounts en tabla marcas' },
+      { icon: '📱', label: 'Redes', value: 'Instagram feed, Facebook feed, LinkedIn' },
+      { icon: '🔄', label: 'Estado', value: 'listo → publicado' },
+    ],
+    rev: 'Pipeline: listo → publicado',
+    deps: 'Requiere: GETLATE_API_KEY + cuentas configuradas por marca',
+    path: '/Users/imac/Desktop/noracode/nora/scripts/carrusel-publish.js',
   },
 ]
 

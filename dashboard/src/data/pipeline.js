@@ -3033,6 +3033,300 @@ export const pipelines = [
       },
     },
   },
+
+  // ─── CARRUSEL INSTAGRAM ───────────────────────────────────────────
+  {
+    id: 'carrusel',
+    title: 'Carrusel',
+    subtitle: 'Slides HTML swipeable → Playwright PNG 1080×1350 → Supabase → GetLate',
+    command: '/carrusel',
+    status: 'activo',
+
+    executionBlocks: [
+      {
+        executor: 'usuario',
+        label: 'Usuario',
+        phases: ['activador'],
+        handoff: 'invoca skill',
+      },
+      {
+        executor: 'skill',
+        label: 'Skill: carrusel',
+        phases: ['lectura', 'procesamiento', 'ejecucion'],
+        handoff: 'slides PNG en directorio local',
+      },
+      {
+        executor: 'script',
+        label: 'Script: carrusel-upload.js',
+        phases: ['entrega'],
+        handoff: 'carrusel listo → revisión en NORA',
+      },
+      {
+        executor: 'usuario',
+        label: 'Revisión humana en NORA',
+        phases: ['observacion'],
+        handoff: null,
+      },
+    ],
+
+    phases: {
+      activador: {
+        title: 'Instrucción directa',
+        executor: 'usuario',
+        stateIn: null,
+        stateOut: null,
+        description: 'El usuario invoca /carrusel indicando marca y tema. No requiere ComfyUI ni GPU — todo corre en Mac local.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Instrucción del usuario',
+            resource: { type: 'usuario', name: 'Terminal Claude Code' },
+            description: 'El usuario indica marca, tema/ángulo del carrusel y tipo de secuencia.',
+            details: [
+              'marca — Nombre exacto en Supabase (obligatorio)',
+              'tema — Ángulo o propósito del carrusel (ej: tips, servicios, comparación)',
+              'secuencia — Estándar (7 slides), listicle, tutorial, comparación',
+              'imágenes — Rutas locales opcionales para fondos de slides',
+            ],
+          },
+          {
+            label: 'Cargar variables de entorno',
+            resource: { type: 'env', name: '.env' },
+            description: 'Se exportan las variables de Supabase para lectura de marca y upload de slides.',
+            details: [
+              'SUPABASE_URL',
+              'SUPABASE_SERVICE_ROLE_KEY',
+            ],
+          },
+        ],
+      },
+
+      lectura: {
+        title: 'Identidad de marca + imágenes aprobadas',
+        executor: 'skill',
+        executorDetail: 'carrusel',
+        stateIn: null,
+        stateOut: null,
+        description: 'Lee la identidad de marca via carrusel-brand.js y busca imágenes aprobadas para usar como fondos de slides.',
+        supabaseFields: {
+          reads: {
+            marcas: ['paleta_colores', 'tipografia', 'logos', 'arquetipo', 'look_and_feel', 'contenido_prohibido'],
+            creatividades: ['link_ren_1', 'concepto', 'descripcion_corta', 'origen'],
+          },
+          writes: {},
+        },
+        steps: [
+          {
+            label: 'Leer identidad de marca',
+            resource: { type: 'script', name: 'carrusel-brand.js --marca {marca}' },
+            description: 'Devuelve JSON con colores, tipografía, logos (color + claro), arquetipo, handle Instagram, look & feel.',
+            details: [
+              'nombre, handle — identidad pública',
+              'colorPrimario, paleta — sistema de colores',
+              'tipografia — font family de marca',
+              'logoUrl — logo color (fondos claros)',
+              'logoUrlClaro — logo blanco (fondos oscuros)',
+              'arquetipo, lookAndFeel — personalidad visual',
+              'contenidoProhibido — filtro negativo',
+            ],
+            filter: 'marca = {marca}',
+          },
+          {
+            label: 'Buscar imágenes aprobadas para fondos',
+            resource: { type: 'supabase', name: 'READ creatividades', op: 'READ' },
+            description: 'Imágenes aprobadas de la marca que sirven como fondos de slides (espacio negativo, sin personas prominentes).',
+            details: [
+              'Filtro: condicion IN (resultado_final, aprobado)',
+              'link_ren_1 NOT NULL, no .mp4',
+              'Criterio: espacio negativo, producto/paisaje/conceptual',
+              'Usar 2-4 imágenes distintas por carrusel',
+            ],
+            filter: 'marca = {marca} AND condicion IN (resultado_final, aprobado) AND link_ren_1 NOT NULL',
+          },
+        ],
+      },
+
+      procesamiento: {
+        title: 'Colores + Tipografía + Contenido + HTML',
+        executor: 'skill',
+        executorDetail: 'carrusel',
+        stateIn: null,
+        stateOut: null,
+        description: '4 sub-pasos: derivar sistema de colores (6 tokens), configurar tipografía, generar contenido de slides, componer HTML con layouts variados.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Derivar sistema de colores',
+            resource: { type: 'skill', name: 'carrusel' },
+            description: '6 tokens cromáticos derivados del color primario de marca.',
+            details: [
+              'BRAND_PRIMARY — acento principal',
+              'BRAND_LIGHT — acento secundario (~20% más claro)',
+              'BRAND_DARK — texto CTA (~30% más oscuro)',
+              'LIGHT_BG — off-white con tinte complementario',
+              'LIGHT_BORDER — ligeramente más oscuro que LIGHT_BG',
+              'DARK_BG — casi negro con tinte de marca',
+            ],
+          },
+          {
+            label: 'Configurar tipografía',
+            resource: { type: 'skill', name: 'carrusel' },
+            description: 'Par heading + body de la marca o Google Fonts. Escala variable obligatoria.',
+            details: [
+              'H1 portada: 28-44px, H2 interiores: 22-36px',
+              'Big statement: 36-48px, Tags: 9-12px uppercase',
+              'Variedad obligatoria: al menos 2 tamaños distintos de heading',
+            ],
+          },
+          {
+            label: 'Generar contenido de slides',
+            resource: { type: 'skill', name: 'carrusel' },
+            description: 'Gancho para slide 1, secuencia de contenido, copy por slide, CTA final, y caption para redes. Puede buscar en la web para enriquecer con datos reales.',
+            details: [
+              'WebSearch / WebFetch — busca datos, estadísticas o tendencias relevantes al tema',
+              'Slide 1: gancho — afirmación polémica, número+beneficio, pregunta que duele',
+              'Slides 2-6: contenido alternando claro/oscuro',
+              'Slide final: CTA con logo, tagline, botón con ícono SVG',
+              'Secuencias: estándar (7), listicle (5-10), tutorial (7), comparación (5)',
+              'Caption: texto que acompaña el post en redes (hashtags, CTA, contexto)',
+            ],
+          },
+          {
+            label: 'Componer HTML swipeable',
+            resource: { type: 'skill', name: 'carrusel' },
+            description: 'HTML limpio con slides navegables via flechas. Sin emular interfaz de Instagram.',
+            details: [
+              '7 layouts: centrado, bottom-anchored, top-left editorial, split, big number, card flotante, offset lateral',
+              '5 tipos de fondo: LIGHT, DARK, GRADIENT, IMAGE_DARK, IMAGE_GRADIENT',
+              'Barra de progreso + flecha swipe en cada slide',
+              'Navegación: flechas izquierda/derecha entre slides',
+              'Imágenes embebidas como data: URI base64 (nunca rutas)',
+            ],
+          },
+        ],
+      },
+
+      ejecucion: {
+        title: 'Playwright export → PNG 1080×1350',
+        executor: 'skill',
+        executorDetail: 'Playwright (chromium)',
+        stateIn: null,
+        stateOut: null,
+        description: 'Exporta cada slide como PNG individual de 1080×1350px usando Playwright chromium headless.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Exportar slides via Playwright',
+            resource: { type: 'skill', name: 'carrusel → Playwright export' },
+            description: 'Viewport 420×525, device_scale_factor 2.5714 para output 1080×1350. Navegación queda fuera del canvas.',
+            details: [
+              'Viewport: 420×525px (solo el canvas, sin flechas ni counter)',
+              'device_scale_factor: 2.5714 (1080/420) para alta resolución',
+              'wait_for_timeout(3000): espera carga de Google Fonts',
+              'Cada slide: translateX para posicionar, screenshot con clip sobre .carousel-wrapper',
+              'Output: ~/Desktop/noracode/carruseles/{marca}/{fecha}/slides/slide_N.png',
+            ],
+          },
+        ],
+        meta: [
+          { icon: '⚙️', label: 'Hardware', value: 'Mac local — sin GPU, Playwright chromium headless' },
+          { icon: '⏱️', label: 'Tiempo', value: '~10-20 segundos (7 slides)' },
+          { icon: '📐', label: 'Output', value: 'PNG 1080×1350px por slide (ratio 4:5)' },
+        ],
+      },
+
+      entrega: {
+        title: 'Upload Storage + crear carrusel en NORA',
+        executor: 'script',
+        executorDetail: 'carrusel-upload.js',
+        stateIn: null,
+        stateOut: 'listo',
+        description: 'Sube PNGs exportados a Supabase Storage y crea registros en tablas carruseles + carrusel_slides.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: ['carrusel-{id}-slide-{n}-{ts}.png → bucket creatividades (PNG por slide)'],
+            carruseles: {
+              insert: [
+                'marca', 'titulo', 'copy (caption redes)',
+                'tamano → 4:5', 'template_id → html-skill',
+                'estado → listo', 'html_path → ruta al index.html fuente',
+              ],
+            },
+            carrusel_slides: {
+              insert: [
+                'carrusel_id', 'orden (1..N)',
+                'imagen_base_url → URL Storage', 'imagen_final_url → URL Storage',
+              ],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Subir PNGs a Storage',
+            resource: { type: 'script', name: 'carrusel-upload.js --dir {slides_dir} --marca {marca} --titulo {titulo} --copy {copy}' },
+            description: 'Lee PNGs del directorio ordenados por número, sube cada uno al bucket creatividades.',
+          },
+          {
+            label: 'Crear registro carrusel',
+            resource: { type: 'supabase', name: 'INSERT carruseles', op: 'INSERT' },
+            description: 'Registro principal con metadata del carrusel.',
+            details: [
+              'marca — nombre de la marca',
+              'titulo — título del carrusel',
+              'copy — caption para redes sociales',
+              'tamano → 4:5 (1080×1350)',
+              'template_id → html-skill',
+              'estado → listo',
+            ],
+            stateChange: 'NULL → listo',
+          },
+          {
+            label: 'Crear slides individuales',
+            resource: { type: 'supabase', name: 'INSERT carrusel_slides', op: 'INSERT' },
+            description: 'Un registro por slide con orden y URLs de imagen.',
+            details: [
+              'carrusel_id — FK al carrusel',
+              'orden — posición (1, 2, 3...)',
+              'imagen_base_url — URL pública en Storage',
+              'imagen_final_url — URL pública en Storage',
+            ],
+          },
+        ],
+      },
+
+      observacion: {
+        title: 'Revisión humana en NORA Dashboard',
+        executor: 'usuario',
+        stateIn: 'listo',
+        stateOut: 'listo',
+        description: 'El usuario revisa el carrusel en NORA (CarruselEditor). Puede reordenar slides, editar textos, eliminar slides, cambiar template y tamaño.',
+        supabaseFields: {
+          reads: {
+            carruseles: ['id', 'marca', 'titulo', 'copy', 'tamano', 'template_id', 'estado'],
+            carrusel_slides: ['id', 'carrusel_id', 'orden', 'imagen_base_url', 'imagen_final_url', 'texto_principal', 'texto_secundario'],
+          },
+          writes: {},
+        },
+        steps: [
+          {
+            label: 'Revisar en CarruselEditor',
+            resource: { type: 'usuario', name: 'NORA Dashboard — CarruselEditor' },
+            description: 'Interfaz completa: panel de slides, preview grande, sidebar de configuración.',
+            details: [
+              'Reordenar slides (drag o flechas up/down)',
+              'Editar texto principal y secundario por slide',
+              'Cambiar template (6 opciones) y tamaño (1:1 o 4:5)',
+              'Agregar slides desde creatividades aprobadas',
+              'Eliminar slides individuales',
+              'Máximo 10 slides (límite Instagram)',
+            ],
+          },
+        ],
+      },
+
+    },
+  },
 ]
 
 
