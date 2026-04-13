@@ -311,8 +311,8 @@ async function queuePrompt(workflow) {
   return data.prompt_id;
 }
 
-async function waitForCompletion(promptId, maxWait = 900000) {
-  // 15 min timeout for video (much longer than images)
+async function waitForCompletion(promptId, maxWait = 1800000) {
+  // 30 min timeout — multipass default needs more time for longer videos
   const start = Date.now();
   while (Date.now() - start < maxWait) {
     await new Promise(r => setTimeout(r, COMFY_POLL));
