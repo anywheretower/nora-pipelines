@@ -3327,6 +3327,229 @@ export const pipelines = [
 
     },
   },
+
+  {
+    id: 'mailing',
+    title: 'Mailing',
+    subtitle: 'Email HTML profesional → Supabase → Preview/Download en NORA',
+    command: '/nora-mailing',
+    status: 'activo',
+
+    executionBlocks: [
+      {
+        executor: 'usuario',
+        label: 'Usuario',
+        phases: ['activador'],
+        handoff: 'invoca skill',
+      },
+      {
+        executor: 'skill',
+        label: 'Skill: nora-mailing',
+        phases: ['lectura', 'procesamiento', 'ejecucion'],
+        handoff: 'HTML email en /tmp',
+      },
+      {
+        executor: 'script',
+        label: 'Script: mailing-upload.js',
+        phases: ['entrega'],
+        handoff: 'mailing borrador en NORA',
+      },
+      {
+        executor: 'usuario',
+        label: 'Revisión + Copiar/Descargar HTML',
+        phases: ['observacion'],
+        handoff: null,
+      },
+    ],
+
+    phases: {
+      activador: {
+        title: 'Instrucción directa',
+        executor: 'usuario',
+        stateIn: null,
+        stateOut: null,
+        description: 'El usuario invoca /nora-mailing indicando marca y tema. No requiere ComfyUI ni GPU — todo corre en Mac local.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Instrucción del usuario',
+            resource: { type: 'usuario', name: 'Terminal Claude Code' },
+            description: 'El usuario indica marca, tema/ángulo del mailing y tipo de email.',
+            details: [
+              'marca — Nombre exacto en Supabase (obligatorio)',
+              'tema — Ángulo o propósito del email (ej: newsletter mensual, promo Black Friday)',
+              'template — newsletter, promocional, o anuncio (auto-seleccionado si no se indica)',
+            ],
+          },
+        ],
+      },
+
+      lectura: {
+        title: 'Identidad de marca',
+        executor: 'skill',
+        executorDetail: 'nora-mailing',
+        stateIn: null,
+        stateOut: null,
+        description: 'Lee la identidad de marca via carrusel-brand.js (reutilizado).',
+        supabaseFields: {
+          reads: {
+            marcas: ['paleta_colores', 'tipografia', 'logos', 'arquetipo', 'look_and_feel', 'contenido_prohibido'],
+          },
+          writes: {},
+        },
+        steps: [
+          {
+            label: 'Leer identidad de marca',
+            resource: { type: 'script', name: 'carrusel-brand.js --marca {marca}' },
+            description: 'Devuelve JSON con colores, tipografía, logos, arquetipo, tono.',
+            details: [
+              'colorPrimario, paleta — sistema de colores',
+              'tipografia — font family de marca',
+              'logoUrl — logo color (header del email)',
+              'arquetipo, lookAndFeel — personalidad y tono',
+              'contenidoProhibido — filtro negativo',
+            ],
+            filter: 'marca = {marca}',
+          },
+        ],
+      },
+
+      procesamiento: {
+        title: 'Contenido + HTML email-compatible',
+        executor: 'skill',
+        executorDetail: 'nora-mailing',
+        stateIn: null,
+        stateOut: null,
+        description: 'Genera subject, preheader, secciones de contenido y compone HTML con inline CSS y table layout (600px max-width).',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Derivar design tokens',
+            resource: { type: 'skill', name: 'nora-mailing' },
+            description: '6 tokens cromáticos derivados del color primario (mismo sistema que carrusel).',
+            details: [
+              'BRAND_PRIMARY — CTA button, links',
+              'BRAND_LIGHT — fondos de sección alternados',
+              'BRAND_DARK — header background',
+              'LIGHT_BG — fondo principal del email',
+              'LIGHT_BORDER — separadores',
+              'DARK_BG — footer background',
+            ],
+          },
+          {
+            label: 'Generar contenido del email',
+            resource: { type: 'skill', name: 'nora-mailing' },
+            description: 'Subject (50-60 chars), preheader (80-100 chars), secciones según template elegido.',
+            details: [
+              'Newsletter: hero + 2-3 bloques + CTA',
+              'Promocional: hero grande + oferta + CTA urgente',
+              'Anuncio: hero + mensaje + detalles + CTA suave',
+            ],
+          },
+          {
+            label: 'Componer HTML email-compatible',
+            resource: { type: 'skill', name: 'nora-mailing' },
+            description: 'HTML con table layout, inline CSS, responsive media queries, placeholders merge tags.',
+            details: [
+              'DOCTYPE XHTML Transitional (Outlook)',
+              'Table layout, max-width 600px',
+              'CSS inline en cada elemento',
+              'Google Fonts @import con fallback Arial/Helvetica',
+              'Preheader oculto (display:none)',
+              'MSO conditionals para Outlook',
+              'CTA bulletproof button (VML fallback)',
+              'Placeholders: {{unsubscribe_url}}, {{company_address}}, {{browser_url}}',
+            ],
+          },
+        ],
+      },
+
+      ejecucion: {
+        title: 'HTML composition (Claude)',
+        executor: 'skill',
+        executorDetail: 'nora-mailing',
+        stateIn: null,
+        stateOut: null,
+        description: 'Motor de ejecución es Claude — genera HTML completo email-compatible con brand identity. Sin GPU, sin servicios externos.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Generar HTML + texto plano',
+            resource: { type: 'skill', name: 'nora-mailing → HTML generation' },
+            description: 'Guarda HTML en /tmp/mailing_{marca}_{ts}.html y texto plano en /tmp/mailing_{marca}_{ts}.txt.',
+          },
+        ],
+        meta: [
+          { icon: '⚙️', label: 'Hardware', value: 'Mac local — sin GPU, Claude genera HTML' },
+          { icon: '⏱️', label: 'Tiempo', value: '~10-30 segundos' },
+          { icon: '📐', label: 'Output', value: 'HTML email-compatible (600px, inline CSS, table layout)' },
+        ],
+      },
+
+      entrega: {
+        title: 'Upload Storage + crear mailing en NORA',
+        executor: 'script',
+        executorDetail: 'mailing-upload.js',
+        stateIn: null,
+        stateOut: 'borrador',
+        description: 'Inserta en tabla mailings, sube HTML a Storage, actualiza html_url.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: ['mailings/{marca}/{id}_{ts}.html → bucket creatividades'],
+            mailings: {
+              insert: [
+                'marca', 'titulo', 'subject', 'preheader',
+                'contenido_html', 'contenido_texto',
+                'estado → borrador', 'tema', 'gatillador',
+              ],
+              update: [
+                'html_url → URL pública en Storage',
+              ],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'INSERT mailing + upload HTML',
+            resource: { type: 'script', name: 'mailing-upload.js --html {path} --marca {marca} --subject {subject}' },
+            description: 'Inserta registro, sube HTML a Storage, actualiza URL.',
+          },
+        ],
+      },
+
+      observacion: {
+        title: 'Revisión + Copiar/Descargar en NORA Dashboard',
+        executor: 'usuario',
+        stateIn: 'borrador',
+        stateOut: 'listo',
+        description: 'El usuario revisa el mailing en NORA (MailingView). Preview desktop/mobile, copiar HTML, descargar, pedir cambios.',
+        supabaseFields: {
+          reads: {
+            mailings: ['id', 'marca', 'subject', 'preheader', 'contenido_html', 'estado', 'notas_cambios'],
+          },
+          writes: {},
+        },
+        steps: [
+          {
+            label: 'Revisar en MailingView',
+            resource: { type: 'usuario', name: 'NORA Dashboard — MailingView' },
+            description: 'Preview iframe con toggle desktop (600px) / mobile (320px).',
+            details: [
+              'Preview desktop: max-width 600px',
+              'Preview mobile: max-width 320px',
+              'Copiar HTML al clipboard (para pegar en Mailchimp/Resend)',
+              'Descargar HTML como archivo',
+              'Aprobar: borrador → listo',
+              'Pedir cambios: listo → borrador + notas_cambios',
+              'Marcar enviado: listo → enviado',
+            ],
+          },
+        ],
+      },
+
+    },
+  },
 ]
 
 

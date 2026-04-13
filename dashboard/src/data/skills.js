@@ -217,6 +217,24 @@ export const skills = [
     deps: '← Playwright (chromium) + carrusel-brand.js + carrusel-upload.js',
     path: '/Users/imac/.claude/skills/carrusel/SKILL.md',
   },
+  {
+    id: 'nora-mailing',
+    title: 'nora-mailing',
+    badge: 'Mailing',
+    badgeClass: 'badge-gen',
+    status: 'active',
+    description: 'Genera emails HTML profesionales con identidad de marca. Lee marca (carrusel-brand.js) → deriva colores (6 tokens) → genera contenido (3 templates: newsletter, promocional, anuncio) → compone HTML email-compatible (inline CSS, table layout, 600px) → sube a NORA via mailing-upload.js.',
+    meta: [
+      { icon: '⚡', label: 'Activa', value: 'bajo demanda — /nora-mailing' },
+      { icon: '📤', label: 'Entrega', value: 'mailing en tabla mailings + HTML en Storage' },
+      { icon: '🔧', label: 'Scripts', value: 'carrusel-brand.js (lectura), mailing-upload.js (entrega)' },
+      { icon: '📋', label: 'Escribe', value: 'mailings — subject, preheader, contenido_html, contenido_texto, html_url' },
+      { icon: '🖥️', label: 'Motor', value: 'Claude (generación HTML, sin GPU ni Playwright)' },
+    ],
+    rev: 'Rev: 2026-04-13',
+    deps: '← carrusel-brand.js + mailing-upload.js',
+    path: '/Users/imac/.claude/skills/nora-mailing/SKILL.md',
+  },
 ]
 
 export const scriptCards = [
