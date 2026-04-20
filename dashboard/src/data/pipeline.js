@@ -3550,6 +3550,464 @@ export const pipelines = [
 
     },
   },
+
+  // ─── AFICHES (HTML → PNG → creatividades con origen=afiches) ───────
+  {
+    id: 'afiche',
+    title: 'Afiches',
+    subtitle: 'HTML 1080×1350 → Playwright PNG → creatividades (origen=afiches) con html_url para re-render',
+    command: '/nora-afiche',
+    status: 'activo',
+
+    executionBlocks: [
+      {
+        executor: 'usuario',
+        label: 'Usuario',
+        phases: ['activador'],
+        handoff: 'invoca skill',
+      },
+      {
+        executor: 'skill',
+        label: 'Skill: nora-afiche',
+        phases: ['lectura', 'procesamiento', 'ejecucion'],
+        handoff: 'HTML + PNG en /tmp',
+      },
+      {
+        executor: 'script',
+        label: 'Script: afiche-upload.js',
+        phases: ['entrega'],
+        handoff: 'creatividad origen=afiches lista para revisión',
+      },
+      {
+        executor: 'usuario',
+        label: 'Revisión en NORA AfichesView',
+        phases: ['observacion'],
+        handoff: null,
+      },
+    ],
+
+    phases: {
+      activador: {
+        title: 'Instrucción directa',
+        executor: 'usuario',
+        stateIn: null,
+        stateOut: null,
+        description: 'El usuario invoca /nora-afiche indicando marca y tema, o pasa --mailing-id N para adaptar un mailing existente al lienzo vertical.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Instrucción del usuario',
+            resource: { type: 'usuario', name: 'Terminal Claude Code' },
+            description: 'El usuario indica marca, tema o mailing-id.',
+            details: [
+              'marca — Nombre exacto en Supabase (obligatorio si no hay --id)',
+              'tema — Ángulo del afiche (newsletter, promocional, anuncio)',
+              '--mailing-id N — Opcional: heredar copy de un mailing existente',
+              '--id N — Opcional: re-render sobre afiche existente para correcciones',
+              'imágenes — Ruta local opcional para hero',
+            ],
+          },
+          {
+            label: 'Cargar variables de entorno',
+            resource: { type: 'env', name: '.env.local' },
+            description: 'SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY.',
+          },
+        ],
+      },
+
+      lectura: {
+        title: 'Identidad de marca (+ mailing base opcional)',
+        executor: 'skill',
+        executorDetail: 'nora-afiche',
+        stateIn: null,
+        stateOut: null,
+        description: 'Lee identidad de marca via carrusel-brand.js y, si viene --mailing-id, lee el contenido_html del mailing.',
+        supabaseFields: {
+          reads: {
+            marcas: ['paleta_colores', 'tipografia', 'logos', 'arquetipo', 'look_and_feel', 'contenido_prohibido'],
+            mailings: ['contenido_html', 'subject', 'tema', 'secciones'],
+            creatividades: ['link_ren_1', 'link_ren_2', 'concepto', 'origen', 'html_url'],
+          },
+          writes: {},
+        },
+        steps: [
+          {
+            label: 'Leer identidad de marca',
+            resource: { type: 'script', name: 'carrusel-brand.js --marca {marca}' },
+            description: 'Devuelve JSON con colores, tipografía, logos, arquetipo, tono, redesUrls.',
+            filter: 'marca = {marca}',
+          },
+          {
+            label: 'Leer mailing base (opcional)',
+            resource: { type: 'supabase', name: 'READ mailings WHERE id = {mailing_id}', op: 'READ' },
+            description: 'Si --mailing-id, heredar copy, jerarquía y paleta del mailing. No copiar literal: rediseñar vertical.',
+            filter: 'id = {mailing_id}',
+          },
+          {
+            label: 'Leer HTML previo (si re-render)',
+            resource: { type: 'supabase', name: 'READ creatividades WHERE id = {id}', op: 'READ' },
+            description: 'Si --id, leer html_url para descargar el HTML original y aplicar los cambios pedidos.',
+            filter: 'id = {id} AND origen = afiches',
+          },
+        ],
+      },
+
+      procesamiento: {
+        title: 'Design tokens + contenido + HTML 1080×1350',
+        executor: 'skill',
+        executorDetail: 'nora-afiche',
+        stateIn: null,
+        stateOut: null,
+        description: 'Deriva 8 tokens cromáticos (mismo sistema que mailing), genera contenido para el template elegido, compone HTML con flexbox/grid en lienzo fijo sin scroll.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Derivar design tokens',
+            resource: { type: 'skill', name: 'nora-afiche' },
+            description: '8 tokens derivados del color primario.',
+            details: [
+              'BRAND_PRIMARY, BRAND_LIGHT, BRAND_DARK',
+              'ACCENT_COLOR — color secundario vibrante',
+              'PILL_BG — fondo suave para pildoras',
+              'LIGHT_BG, LIGHT_BORDER, DARK_BG',
+            ],
+          },
+          {
+            label: 'Generar contenido',
+            resource: { type: 'skill', name: 'nora-afiche' },
+            description: 'Headline, subtítulo, 1-2 bloques, CTA. Tipografía escalada ~1.8× vs email para miniatura WhatsApp.',
+            details: [
+              'Hero headline: 52-68px',
+              'Body: 20-26px',
+              'Micro-labels uppercase: 14-16px (letter-spacing 3px)',
+              'Bloques: hero + stats callout + checklist/mito/lista + CTA',
+            ],
+          },
+          {
+            label: 'Componer HTML con flexbox/grid',
+            resource: { type: 'skill', name: 'nora-afiche' },
+            description: 'CSS moderno (chromium, no Gmail). Sin table layout, sin MSO, sin media queries, sin CAN-SPAM. Fondos alternados (mínimo 3).',
+            details: [
+              'body: width 1080px, height 1350px, overflow hidden',
+              'Iconos SVG inline como data URIs',
+              'Google Fonts con @import y display=swap',
+              'Cada párrafo con strong + span ACCENT_COLOR',
+              'Footer mini: logo + handle + 2-3 redes (SVG)',
+            ],
+          },
+        ],
+      },
+
+      ejecucion: {
+        title: 'Playwright chromium → PNG 1080×1350',
+        executor: 'skill',
+        executorDetail: 'Playwright (chromium headless)',
+        stateIn: null,
+        stateOut: null,
+        description: 'Renderiza el HTML local con Playwright, viewport 1080×1350 device_scale_factor 1.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Exportar PNG via Playwright',
+            resource: { type: 'skill', name: 'nora-afiche → Playwright export' },
+            description: 'Navega a file:// del HTML local, espera 3s por Google Fonts, hace screenshot.',
+            details: [
+              'Viewport: 1080×1350, device_scale_factor: 1',
+              'wait_for_timeout(3000) para fuentes',
+              'page.screenshot(path=..., full_page=False, type="png")',
+              'Output: /tmp/afiche_{slug}_{ts}.png',
+            ],
+          },
+        ],
+        meta: [
+          { icon: '⚙️', label: 'Hardware', value: 'Mac local — sin GPU, Playwright chromium headless' },
+          { icon: '⏱️', label: 'Tiempo', value: '~5-10 segundos (incluye espera fuentes)' },
+          { icon: '📐', label: 'Output', value: 'PNG 1080×1350 (ratio 4:5) + HTML fuente preservado' },
+        ],
+      },
+
+      entrega: {
+        title: 'Upload Storage + crear/actualizar creatividad',
+        executor: 'script',
+        executorDetail: 'afiche-upload.js',
+        stateIn: null,
+        stateOut: 'para_revision',
+        description: 'Sube PNG y HTML a Storage, y hace INSERT (nueva creatividad con origen=afiches) o UPDATE (re-render sobre --id existente). Preserva html_url para correcciones futuras.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'origen'],
+          },
+          writes: {
+            storage: [
+              'afiches/{slug}/{ts}.png → bucket creatividades',
+              'afiches/{slug}/{ts}.html → bucket creatividades',
+            ],
+            creatividades: {
+              insert: [
+                'marca', 'origen → afiches', 'condicion → para_revision',
+                'estado → para_revision', 'link_ren_1 → URL pública PNG',
+                'html_url → URL pública HTML', 'concepto', 'slogan_headline', 'copy',
+              ],
+              update: [
+                'link_ren_1 (nueva URL PNG con ts)',
+                'html_url (nueva URL HTML con ts)',
+                'condicion → para_revision',
+                'observacion → null',
+              ],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Subir PNG + HTML a Storage y persistir',
+            resource: { type: 'script', name: 'afiche-upload.js --html {path} --png {path} --marca {marca} [--id N]' },
+            description: 'Modo create: INSERT nueva creatividad. Modo re-render: UPDATE sobre id existente preservando el ID.',
+            stateChange: 'NULL → para_revision (o UPDATE del mismo id)',
+          },
+        ],
+      },
+
+      observacion: {
+        title: 'Revisión en NORA AfichesView',
+        executor: 'usuario',
+        stateIn: 'para_revision',
+        stateOut: 'resultado_final',
+        description: 'El usuario revisa el afiche en NORA Aplicaciones > Afiches. Preview PNG + toggle HTML fuente, descarga PNG/HTML, aprobar o pedir cambios.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'origen', 'link_ren_1', 'html_url', 'condicion', 'observacion', 'slogan_headline', 'concepto', 'copy'],
+          },
+          writes: {
+            creatividades: {
+              update: ['condicion (resultado_final al aprobar)', 'observacion (texto al pedir cambios)'],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Revisar en AfichesView',
+            resource: { type: 'usuario', name: 'NORA Dashboard — Aplicaciones > Afiches' },
+            description: 'Lista lateral + preview PNG/HTML + acciones.',
+            details: [
+              'Toggle preview PNG / HTML fuente (iframe escalado)',
+              'Descargar PNG (link directo link_ren_1)',
+              'Descargar HTML (link directo html_url)',
+              'Abrir HTML en pestaña nueva',
+              'Aprobar → condicion = resultado_final',
+              'Pedir cambios → observacion poblada + condicion = observado',
+              'Eliminar creatividad',
+            ],
+          },
+          {
+            label: 'Re-render sobre misma creatividad',
+            resource: { type: 'skill', name: '/nora-afiche --id N --cambios "texto"' },
+            description: 'Si el usuario pide cambios, la skill lee html_url, aplica cambios, renderiza nuevo PNG y hace UPDATE preservando el id.',
+            details: [
+              'Se preserva el ID para historial único',
+              'Nueva URL con timestamp distinto en Storage',
+              'condicion → para_revision, observacion → null',
+            ],
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 'reporte-meta',
+    title: 'Reporte Meta (Facebook + IG + Ads)',
+    subtitle: 'Métricas en vivo via MCP meta-insights → análisis + hallazgos automáticos → HTML profesional → sync a NORA',
+    command: '/reporte-meta',
+    status: 'activo',
+
+    executionBlocks: [
+      {
+        executor: 'usuario',
+        label: 'Usuario',
+        phases: ['activador'],
+        handoff: 'invoca skill con cliente y rango de fechas',
+      },
+      {
+        executor: 'skill',
+        label: 'Skill: reporte-meta',
+        phases: ['lectura', 'procesamiento', 'ejecucion'],
+        handoff: 'HTML generado en carpeta de la marca',
+      },
+      {
+        executor: 'script',
+        label: 'Script: sync-reportes.js',
+        phases: ['entrega'],
+        handoff: 'reporte_meta_url actualizado en marcas',
+      },
+      {
+        executor: 'usuario',
+        label: 'Visualización en NORA Dashboard',
+        phases: ['observacion'],
+        handoff: null,
+      },
+    ],
+
+    phases: {
+      activador: {
+        title: 'Solicitud de reporte',
+        executor: 'usuario',
+        stateIn: null,
+        stateOut: null,
+        description: 'El usuario invoca /reporte-meta indicando cliente (slug) y rango de fechas. El skill detecta automáticamente las capacidades del cliente: Facebook (siempre), Instagram (si HAS_IG), Meta Ads (si HAS_ADS).',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Instrucción del usuario',
+            resource: { type: 'usuario', name: 'Terminal Claude Code' },
+            description: 'Slug del cliente + período (opcional, default 30 días).',
+            details: [
+              'cliente — Slug Meta (csj, rtk, equos, altascumbres, cemtra, meser, mirador, vichuquen, redagrupa)',
+              '--desde / --hasta — Rango de fechas (YYYY-MM-DD)',
+              'Ejemplo: /reporte-meta csj desde 2026-01-01 hasta 2026-03-31',
+            ],
+          },
+          {
+            label: 'Verificar token y capacidades',
+            resource: { type: 'mcp', name: 'mcp__meta-insights__verify_token' },
+            description: 'Detecta HAS_FB, HAS_IG, HAS_ADS y modo de operación.',
+          },
+        ],
+      },
+
+      lectura: {
+        title: 'Extracción de datos via MCP meta-insights',
+        executor: 'skill',
+        executorDetail: 'reporte-meta',
+        stateIn: null,
+        stateOut: null,
+        description: 'Lanza ~9-25 queries paralelas a Meta Graph API v21 (Page Insights, IG Insights, Ad Insights) según capacidades del cliente. Lee reporte previo si existe para rescatar contexto cualitativo.',
+        supabaseFields: {
+          reads: {
+            marcas: ['nombre', 'reporte_meta_url'],
+          },
+          writes: {},
+        },
+        steps: [
+          {
+            label: 'Facebook orgánico (9 queries)',
+            resource: { type: 'mcp', name: 'mcp__meta-insights__get_page_insights + get_page_posts' },
+            description: 'KPIs día + days_28 (page_impressions_unique + page_impressions_paid_unique), reacciones, video org/paid, posts.',
+          },
+          {
+            label: 'Instagram orgánico (8 queries, si HAS_IG)',
+            resource: { type: 'mcp', name: 'mcp__meta-insights__get_ig_insights + get_ig_media' },
+            description: 'Reach, views, follower trend, demografía, top media.',
+          },
+          {
+            label: 'Meta Ads (9 queries, si HAS_ADS)',
+            resource: { type: 'mcp', name: 'mcp__meta-insights__get_ad_account_insights' },
+            description: 'KPIs cuenta, campañas, ad sets, creatives, breakdowns por plataforma/edad/dispositivo.',
+          },
+          {
+            label: 'Lectura de reporte anterior (opcional)',
+            resource: { type: 'doc', name: 'reporte-meta-{slug}.html previo' },
+            description: 'Rescatar hallazgos cualitativos y context que no viene de los MCPs.',
+          },
+        ],
+      },
+
+      procesamiento: {
+        title: 'Cálculo de métricas + hallazgos automáticos',
+        executor: 'skill',
+        executorDetail: 'reporte-meta',
+        stateIn: null,
+        stateOut: null,
+        description: 'Calcula deltas, polaridad, separación org/paid (alcance_organico = page_impressions_unique − page_impressions_paid_unique, ambos days_28), engagement rate, composición video, frecuencia publicación. Aplica reglas de hallazgos vigentes (FB-04, FB-10 a FB-19, IG-*, ADS-*) y genera tabla de próximos pasos priorizados.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Métricas derivadas',
+            resource: { type: 'skill', name: 'reporte-meta' },
+            description: 'Deltas YoY o vs período anterior, polaridad (normal o invertida), engagement rate, days con pauta activa.',
+          },
+          {
+            label: 'Separación org/paid (método directo)',
+            resource: { type: 'skill', name: 'reporte-meta' },
+            description: 'Alcance_paid = page_impressions_paid_unique (oficial Meta). Alcance_organico = total − paid. Sin heurísticas. Caveat: 5-15% de overlap documentado por Meta.',
+          },
+          {
+            label: 'Generación de hallazgos',
+            resource: { type: 'doc', name: 'meta-hallazgo-rules.md' },
+            description: 'Máx 15 hallazgos ordenados bad → info → good. Cada hallazgo con tipo, texto datos concretos y recomendación.',
+          },
+        ],
+      },
+
+      ejecucion: {
+        title: 'Renderizado HTML con template oficial NORA',
+        executor: 'skill',
+        executorDetail: 'reporte-meta + template-meta.html',
+        stateIn: null,
+        stateOut: null,
+        description: 'Lee template HTML oficial (con logo NORA en base64) y reemplaza placeholders. Genera 4-6 tabs según modo: Facebook, Instagram, Meta Ads, Tendencias, Hallazgos, Próximos Pasos. Sparklines SVG inline con datos diarios.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Leer template oficial',
+            resource: { type: 'doc', name: '~/.claude/skills/reporte-meta/references/template-meta.html' },
+            description: 'CRÍTICO: nunca escribir HTML desde cero — el template contiene el logo NORA en base64 y los estilos estandarizados.',
+          },
+          {
+            label: 'Renderizar contenido por tab',
+            resource: { type: 'skill', name: 'reporte-meta' },
+            description: 'KPI grid 4×2, nota azul metodología, tabla comparativa (org/paid/totales), comp-bar composición, detalle video, reacciones, actividad contenido.',
+          },
+          {
+            label: 'Escribir HTML en carpeta de la marca',
+            resource: { type: 'doc', name: '/Users/imac/Desktop/noracode/{marca_folder}/reporte-meta-{slug}.html' },
+            description: 'Nombre fijo, se sobreescribe cada vez. Ej: clinicasanjavier/reporte-meta-clinica-san-javier.html.',
+          },
+        ],
+      },
+
+      entrega: {
+        title: 'Sincronización a Supabase Storage',
+        executor: 'script',
+        executorDetail: 'sync-reportes.js',
+        stateIn: null,
+        stateOut: null,
+        description: 'Sube el HTML al bucket creatividades de Supabase y actualiza marcas.reporte_meta_url para que el cliente lo vea en el dashboard NORA.',
+        supabaseFields: {
+          reads: { marcas: ['id', 'marca', 'reporte_meta_url'] },
+          writes: {
+            storage: ['bucket creatividades: reportes-meta/{slug}/{ts}.html'],
+            marcas: ['reporte_meta_url'],
+          },
+        },
+        steps: [
+          {
+            label: 'Sync via script dedicado',
+            resource: { type: 'script', name: 'cd /Users/imac/Desktop/noracode/nora && node scripts/sync-reportes.js' },
+            description: 'Detecta automáticamente reportes nuevos vs marker .sync-reporte-meta-{slug}, sube y actualiza la URL en marcas.',
+          },
+        ],
+      },
+
+      observacion: {
+        title: 'Visualización en NORA Dashboard',
+        executor: 'usuario',
+        executorDetail: 'NORA Dashboard',
+        stateIn: null,
+        stateOut: null,
+        description: 'El cliente accede al reporte via NORA Dashboard. La URL queda persistente hasta el próximo sync.',
+        supabaseFields: {
+          reads: { marcas: ['reporte_meta_url'] },
+          writes: {},
+        },
+        steps: [
+          {
+            label: 'Cliente accede al reporte',
+            resource: { type: 'usuario', name: 'NORA Dashboard — sección Reportes' },
+            description: 'HTML interactivo con tabs, sparklines, hallazgos y próximos pasos.',
+          },
+        ],
+      },
+    },
+  },
 ]
 
 

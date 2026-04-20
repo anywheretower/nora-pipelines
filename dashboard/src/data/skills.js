@@ -235,6 +235,42 @@ export const skills = [
     deps: '← carrusel-brand.js + mailing-upload.js',
     path: '/Users/imac/.claude/skills/nora-mailing/SKILL.md',
   },
+  {
+    id: 'nora-afiche',
+    title: 'nora-afiche',
+    badge: 'Afiches',
+    badgeClass: 'badge-gen',
+    status: 'active',
+    description: 'Genera afiches 1080×1350 para WhatsApp/IG. Lee marca (carrusel-brand.js) → reutiliza bloques del skill mailing (tokens cromáticos, hero, stats, checklist, mito/realidad, CTA) en lienzo vertical sin scroll → Playwright chromium exporta PNG → afiche-upload.js crea creatividad con origen=afiches + html_url para re-render en correcciones.',
+    meta: [
+      { icon: '⚡', label: 'Activa', value: 'bajo demanda — /nora-afiche' },
+      { icon: '📤', label: 'Entrega', value: 'creatividad con origen=afiches + PNG y HTML en Storage' },
+      { icon: '🔧', label: 'Scripts', value: 'carrusel-brand.js (lectura), afiche-upload.js (entrega)' },
+      { icon: '📋', label: 'Escribe', value: 'creatividades — origen=afiches, link_ren_1, html_url, concepto, slogan_headline, copy' },
+      { icon: '🖥️', label: 'Motor', value: 'Claude (generación HTML) + Playwright chromium headless (PNG 1080×1350)' },
+    ],
+    rev: 'Rev: 2026-04-16',
+    deps: '← carrusel-brand.js + Playwright + afiche-upload.js',
+    path: '/Users/imac/.claude/skills/nora-afiche/SKILL.md',
+  },
+  {
+    id: 'reporte-meta',
+    title: 'reporte-meta',
+    badge: 'Reportes',
+    badgeClass: 'badge-support',
+    status: 'active',
+    description: 'Genera reportes HTML mensuales/trimestrales de Facebook (+ Instagram + Meta Ads cuando estén vinculados) con datos en vivo via MCP meta-insights. Separa orgánico vs paid usando page_impressions_paid_unique (métrica oficial de Meta, sin necesidad de ad_account). Modo solo-FB, FB+IG, FB+Ads o Completo según capacidades del cliente. 4-6 tabs: Facebook, Instagram, Meta Ads, Tendencias, Hallazgos, Próximos Pasos.',
+    meta: [
+      { icon: '⚡', label: 'Activa', value: 'bajo demanda — /reporte-meta {client} desde {fecha} hasta {fecha}' },
+      { icon: '📤', label: 'Entrega', value: 'HTML en /Users/imac/Desktop/noracode/{marca_folder}/ + sync a Supabase Storage' },
+      { icon: '🔧', label: 'MCP', value: 'meta-insights (Facebook Page Insights + IG + Meta Ads via Graph API v21)' },
+      { icon: '📋', label: 'Escribe', value: 'marcas.reporte_meta_url (via sync-reportes.js)' },
+      { icon: '🖥️', label: 'Motor', value: 'Claude (análisis + render HTML con template oficial NORA) — 9 clientes onboardeados con tokens permanentes' },
+    ],
+    rev: 'Rev: 2026-04-20 — método directo org/paid via page_impressions_paid_unique (reemplaza heurística por días sin pauta)',
+    deps: '← MCP meta-insights + credenciales/meta/{client}.json + template-meta.html',
+    path: '/Users/imac/.claude/skills/reporte-meta/SKILL.md',
+  },
 ]
 
 export const scriptCards = [
@@ -289,6 +325,24 @@ export const scriptCards = [
     rev: 'Pipeline: listo → publicado',
     deps: 'Requiere: GETLATE_API_KEY + cuentas configuradas por marca',
     path: '/Users/imac/Desktop/noracode/nora/scripts/carrusel-publish.js',
+  },
+  {
+    id: 'afiche-upload',
+    title: 'afiche-upload.js',
+    badge: 'Script',
+    badgeClass: 'badge-script',
+    status: 'active',
+    description: 'Sube PNG + HTML del afiche a Supabase Storage y crea o actualiza un registro en creatividades con origen=afiches. Soporta --id para re-render sobre una creatividad existente (corrige condicion a para_revision, limpia observacion).',
+    meta: [
+      { icon: '🔧', label: 'Uso (crear)', value: 'node scripts/afiche-upload.js --html <ruta> --png <ruta> --marca "Nombre" [--concepto "..."] [--copy "..."]' },
+      { icon: '🔁', label: 'Uso (re-render)', value: 'node scripts/afiche-upload.js --id 1234 --html <ruta> --png <ruta>' },
+      { icon: '💾', label: 'Storage', value: 'bucket creatividades: afiches/{slug}/{ts}.png + .html' },
+      { icon: '📋', label: 'Escribe', value: 'creatividades (INSERT o UPDATE por id) — origen=afiches, link_ren_1, html_url, condicion=para_revision' },
+      { icon: '🔄', label: 'Estado', value: 'NULL → para_revision (o UPDATE preservando id)' },
+    ],
+    rev: 'Pipeline: local → para_revision',
+    deps: 'Requiere: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, columna html_url en creatividades',
+    path: '/Users/imac/Desktop/noracode/nora/scripts/afiche-upload.js',
   },
 ]
 
