@@ -2,11 +2,13 @@
  * NORA — Text-to-Video UGC (LTX-Video 2.3 con audio + RTX upscale)
  * Genera video vía ComfyUI remoto (PC-2), merge audio, upscale RTX x2, sube a Supabase Storage.
  *
- * Uso: node comfy-t2v-ugc.mjs [--once] [--id=123] [--max=1] [--multipass]
+ * Uso: node comfy-t2v-ugc.mjs [--once] [--id=123] [--max=1] [--multipass] [--iphone] [--base]
  *   --once       Procesa lo pendiente y sale (no hace polling)
  *   --id=123     Procesa solo esa creatividad
  *   --max=N      Máximo N videos por corrida (default: 1, por VRAM leak con LTX)
  *   --multipass  Activa 2do y 3er paso de sampling para mayor calidad (más lento)
+ *   --iphone     Reescribe prompt con look iPhone 16 Pro Max (4K Cinematic, Dolby Vision HDR)
+ *   --base       Solo video base, sin RTX upscale x2
  *
  * La creatividad debe tener:
  *   - prompt: texto para LTX-Video 2.3
@@ -58,6 +60,8 @@ const idArg = args.find(a => a.startsWith('--id='));
 const onlyId = idArg ? parseInt(idArg.split('=')[1]) : null;
 const maxArg = args.find(a => a.startsWith('--max='));
 const MAX_PER_RUN = maxArg ? parseInt(maxArg.split('=')[1]) : 1; // VRAM leak safety — LTX needs restart after each
+const baseOnly = args.includes('--base');
+const iphoneLook = args.includes('--iphone');
 const seedArg = args.find(a => a.startsWith('--seed='));
 const forcedSeed = seedArg ? parseInt(seedArg.split('=')[1]) : null;
 
@@ -466,8 +470,25 @@ async function uploadToSupabase(videoBuffer, marca) {
 // =============================================================
 
 async function processOne(creatividad) {
-  const { id, prompt, marca, url: audioUrl } = creatividad;
+  let { id, prompt, marca, url: audioUrl } = creatividad;
   log(`▶ #${id} [${marca}] — Generando video UGC...`);
+
+  // --iphone: rewrite camera/lens to iPhone 16 Pro Max look
+  if (iphoneLook && prompt) {
+    prompt = prompt
+      .replace(/Shot on iPhone 16 Pro Max[^.]*\.\s*/gi, '')
+      .replace(/35mm lens[^.]*\./gi, '')
+      .replace(/\bf\/\d+\.?\d*\b[,.\s]*/gi, '')
+      .replace(/shallow depth of field\.?\s*/gi, '')
+      .replace(/Soft halation\.?\s*/gi, '')
+      .replace(/35mm film grain\.?\s*/gi, '')
+      .replace(/ARRI[^.]*\./gi, '')
+      .replace(/Kodak[^.]*\./gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    prompt = `Shot on iPhone 16 Pro Max, 4K Cinematic mode, Dolby Vision HDR, natural shallow depth of field. ${prompt} Clean skin tones, neutral color grade, no filters.`;
+    log(`  📱 Prompt reescrito con look iPhone`);
+  }
 
   // 0. Mark as processing to prevent duplicate pickup
   await markAsProcessing(id);
@@ -505,21 +526,27 @@ async function processOne(creatividad) {
   // 8. Merge padded Cartesia audio into video (includes trailing silence)
   const mergedBuffer = mergeAudio(rawBuffer, audioBuffer);
 
-  // 9. RTX Video Super Resolution (x2 upscale)
-  log(`  🚀 RTX upscale x2 — subiendo video a ComfyUI...`);
-  const rtxInputName = await uploadVideoToComfyUI(mergedBuffer, `nora_ugc_${id}_base_${Date.now()}.mp4`);
-  const rtxWorkflow = buildRTXUpscaleWorkflow(rtxInputName);
-  const rtxPromptId = await queuePrompt(rtxWorkflow);
-  log(`  ⏳ RTX queued (${rtxPromptId.substring(0, 8)}...)`);
+  let finalBuffer;
+  if (baseOnly) {
+    log(`  ⏭ RTX upscale saltado (--base)`);
+    finalBuffer = mergedBuffer;
+  } else {
+    // 9. RTX Video Super Resolution (x2 upscale)
+    log(`  🚀 RTX upscale x2 — subiendo video a ComfyUI...`);
+    const rtxInputName = await uploadVideoToComfyUI(mergedBuffer, `nora_ugc_${id}_base_${Date.now()}.mp4`);
+    const rtxWorkflow = buildRTXUpscaleWorkflow(rtxInputName);
+    const rtxPromptId = await queuePrompt(rtxWorkflow);
+    log(`  ⏳ RTX queued (${rtxPromptId.substring(0, 8)}...)`);
 
-  const rtxInfo = await waitForRTXUpscale(rtxPromptId);
-  log(`  ✅ RTX upscale listo: ${rtxInfo.filename}`);
+    const rtxInfo = await waitForRTXUpscale(rtxPromptId);
+    log(`  ✅ RTX upscale listo: ${rtxInfo.filename}`);
 
-  const upscaledBuffer = await downloadVideo(rtxInfo.filename, rtxInfo.subfolder, rtxInfo.type);
-  log(`  📥 Upscaled descargado (${(upscaledBuffer.length / 1024 / 1024).toFixed(1)} MB)`);
+    finalBuffer = await downloadVideo(rtxInfo.filename, rtxInfo.subfolder, rtxInfo.type);
+    log(`  📥 Upscaled descargado (${(finalBuffer.length / 1024 / 1024).toFixed(1)} MB)`);
+  }
 
-  // 10. Upload to Supabase Storage (1152×2048 — postprod Remotion escala a 1080×1920)
-  const videoUrl = await uploadToSupabase(upscaledBuffer, marca);
+  // 10. Upload to Supabase Storage
+  const videoUrl = await uploadToSupabase(finalBuffer, marca);
   log(`  ☁️ Subido: ${videoUrl.split('/').pop()}`);
 
   // 12. Update creatividad

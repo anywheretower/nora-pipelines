@@ -85,6 +85,8 @@ const videoScaleArg = args.find(a => a.startsWith('--video-scale='));
 const videoScale = videoScaleArg ? parseFloat(videoScaleArg.split('=')[1]) : null;
 const videoPosArg = args.find(a => a.startsWith('--video-pos='));
 const videoPos = videoPosArg ? videoPosArg.split('=')[1] : null;
+const gradientHeightArg = args.find(a => a.startsWith('--gradient-height='));
+const gradientHeightOverride = gradientHeightArg ? gradientHeightArg.split('=')[1] : null;
 
 if (!creatividadId) {
   console.error('Uso: node postprod-ugc.mjs --id=<ID> [--subs-bottom] [--subs-right] [--no-gradient] [--remove-words=2,5] [--video-scale=1.03] [--video-pos="center 30%"]');
@@ -206,6 +208,16 @@ function whisperToSubtitleGroups(whisperJson, fps, removeWords = []) {
       if (WHISPER_FIXES[word]) word = WHISPER_FIXES[word];
       // Context fix: "perdía ahora" → "perdía horas"
       if (word === 'ahora' && allWords.length > 0 && allWords[allWords.length - 1].word === 'perdía') word = 'horas';
+      // Context fix: "de ajo" → remove "de", replace "ajo" with "viajo"
+      if (word === 'ajo' && allWords.length > 0 && allWords[allWords.length - 1].word === 'de') {
+        allWords[allWords.length - 1].word = 'viajo';
+        continue; // skip "ajo", "de" already became "viajo"
+      }
+      // Context fix: "red agrupa" → "RedAgrupa" (Whisper splits brand name)
+      if (/^agrupa/i.test(word) && allWords.length > 0 && /^red$/i.test(allWords[allWords.length - 1].word)) {
+        allWords[allWords.length - 1].word = 'RedAgrupa' + word.replace(/^agrupa/i, '');
+        continue;
+      }
       allWords.push({
         word,
         startFrame: Math.round(w.start * fps),
@@ -289,7 +301,7 @@ function generateCompositionTsx(compName, marca, id, groups, videoFile, audioFil
     : 'top: 150';
   const subsJustify = opts.subsRight ? 'flex-end' : 'flex-start';
   const showGradient = !opts.noGradient;
-  const gradientHeight = is45 ? '35%' : '30%';
+  const gradientHeight = opts.gradientHeight || (is45 ? '35%' : '30%');
   const gradientPosition = atBottom ? 'bottom' : 'top';
   const gradientDirection = atBottom
     ? 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0) 100%)'
@@ -728,7 +740,7 @@ async function main() {
   log(`Pack de cierre: ${finalPackProps.logoFile}`);
 
   // 7. Generate TSX files
-  const tsxOpts = { subsBottom, subsRight, noGradient, videoScale, videoPos };
+  const tsxOpts = { subsBottom, subsRight, noGradient, videoScale, videoPos, gradientHeight: gradientHeightOverride };
   const tsx916 = generateCompositionTsx(compName, marca, creatividadId, groups, `ugc_${creatividadId}.mp4`, `ugc_${creatividadId}.wav`, finalPackProps, false, tsxOpts);
   const tsx45 = generateCompositionTsx(compName, marca, creatividadId, groups, `ugc_${creatividadId}.mp4`, `ugc_${creatividadId}.wav`, finalPackProps, true, tsxOpts);
 
