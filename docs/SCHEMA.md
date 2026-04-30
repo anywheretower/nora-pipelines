@@ -26,7 +26,7 @@ Identidad completa de cada marca. Cada skill de generación lee estos campos.
 | `identidad_html_url` | text | URL en Storage del HTML guía visual (`creatividades/identidades/{slug}.html`) |
 | `paleta_colores` | text | **[DEPRECATED — usar `identidad_visual` HEX_LIST/COLORES/DEGRADADOS]** Subset cromático mantenido por `upload.mjs` para retrocompat con `carrusel-brand.js`. DROP en Fase 5 (≥2026-05-28) |
 | `look_and_feel` | text | **[DEPRECATED — usar `identidad_visual` ATMÓSFERA/REGISTROS VISUALES/TENSIÓN NARRATIVA]** Sin actualizaciones nuevas. DROP en Fase 5 |
-| `tipografia` | text | Fuentes y uso tipográfico (sigue activo, no deprecated) |
+| `tipografia` | text | Estructurado en dos sub-bloques (desde 2026-04-29): `═══ RECETA gpt-image-2 ═══` (5-7 líneas descriptivas: Display + Body + Accent + Split-headline + Mood, sin nombres comerciales — consumida por `nora-creatividad-cover`) + `═══ NOMBRES COMERCIALES (CSS) ═══` (consumida por `carrusel-brand.js`, `nora-mailing`, `nora-afiche`). Sigue activo, no deprecated. |
 | `notas_generales` | text | **[PARCIALMENTE DEPRECATED]** Bloque imagen (sujetos/ángulos/escenarios) → usar `identidad_visual`. Sigue activo SOLO para sección operativa **ESCENARIOS IMG2IMG** (rotación SOP, no identidad) — leído por `nora-creatividad-img2img` |
 | `contenido_prohibido` | text | Elementos explícitamente prohibidos en creatividades |
 | `version` | int | Versión del registro |
@@ -118,6 +118,7 @@ Registro de cada pieza creativa. Tabla central del pipeline.
 | `Pantalla` | text2img 16:9 | `comfy-text2img.mjs --ratio=16:9` |
 | `input` | img2img | `comfy-img2img.mjs` |
 | `video` | Remotion | Pipeline de video |
+| `motion_graphics` | Remotion + EffectsBibleVertical (PC-2) | `motion-graphics.mjs` |
 
 > **Nota**: Los orígenes text2img van en minúscula. Los img2img van con Mayúscula inicial (legacy).
 

@@ -934,6 +934,281 @@ export const pipelines = [
   },
 
   // ============================================================
+  // Pipeline 2.5: Cover · GPT-2 (upgrade con texto integrado vía ComfyUI Cloud)
+  // ============================================================
+  {
+    id: 'text2img-gpt2-cover',
+    title: 'Cover · GPT-2 (calidad agencia)',
+    subtitle: 'Upgrade vía gpt-image-2 medium con texto baked-in y prompting en 6 bloques (artifact / exact text / layout / visual system / details / constraints) · 25 patrones de layout derivados de moodboard editorial · reglas globales: margen 10% bordes, vibrancia ≤15%, white balance 5600K, layered depth, una metáfora visual única · 1024×1536 (2:3) nativo · arquetipo + identidad de marca + contact strip flexible',
+    command: '/nora-creatividad-cover --id=N',
+    status: 'activo',
+
+    executionBlocks: [
+      {
+        executor: 'usuario',
+        label: 'Usuario',
+        phases: ['activador'],
+        handoff: 'invoca skill con id source',
+      },
+      {
+        executor: 'skill',
+        label: 'Skill: nora-creatividad-cover',
+        phases: ['lectura', 'procesamiento'],
+        handoff: 'INSERT creatividad COVER con tags="parent:N", estado=para_ejecucion',
+      },
+      {
+        executor: 'script',
+        label: 'Script: comfy-cloud-t2i-gpt2.mjs',
+        phases: ['ejecucion', 'entrega'],
+        handoff: 'creatividad ejecutado / para_revision con link_ren_1',
+      },
+    ],
+
+    phases: {
+      activador: {
+        title: 'Invocación con id source',
+        executor: 'usuario',
+        stateIn: null,
+        stateOut: null,
+        description: 'El usuario invoca /nora-creatividad-cover --id=N indicando la creatividad source (origen original o referencia, ya aprobada por revisión humana). Permite batch con --ids=N,M,P.',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Instrucción del usuario',
+            resource: { type: 'usuario', name: 'Terminal Claude Code' },
+            description: 'Indica el id de una creatividad existente que se quiere upgradear.',
+            details: [
+              '--id=N — un solo source (modo simple)',
+              '--ids=N,M,P — batch (procesa hasta 4 por corrida del script)',
+            ],
+          },
+          {
+            label: 'Cargar variables de entorno',
+            resource: { type: 'env', name: '.env' },
+            description: 'COMFY_CLOUD_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.',
+          },
+        ],
+      },
+
+      lectura: {
+        title: 'Validar source + lectura profunda de marca',
+        executor: 'skill',
+        executorDetail: 'nora-creatividad-cover',
+        stateIn: null,
+        stateOut: null,
+        description: 'El skill valida elegibilidad del source y lee contexto profundo de la marca: identidad visual (HEX_LIST), arquetipo Mark/Pearson, ficha completa, redes_urls (web + IG + FB + LinkedIn) y contenido prohibido. Verifica covers previas para evitar duplicados.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'marca', 'origen', 'condicion', 'prompt', 'concepto', 'slogan_headline', 'subtitulo', 'cta', 'copy', 'descripcion_corta', 'buyer_persona', 'dolor_anhelo', 'cambio_emocional', 'diferenciador', 'beneficios', 'objeciones_tipicas', 'link_ren_1', 'tags', 'gatillador'],
+            marcas: ['identidad_visual', 'arquetipo', 'ficha', 'redes_urls', 'paleta_colores', 'look_and_feel', 'contenido_prohibido'],
+          },
+          writes: {},
+          filters: ['source.origen IN (original, referencia)', 'source.condicion IN (para_revision, aprobado, resultado_final)', 'source.link_ren_1 NOT NULL', 'source.slogan_headline NOT NULL'],
+        },
+        steps: [
+          {
+            label: 'Validar elegibilidad del source',
+            resource: { type: 'supabase', name: 'READ creatividades', op: 'READ' },
+            description: 'Verificar origen, condicion, link_ren_1 y slogan_headline. Abortar con mensaje claro si no cumple.',
+            filter: 'id = SOURCE_ID',
+          },
+          {
+            label: 'Lectura profunda de marca',
+            resource: { type: 'supabase', name: 'READ marcas', op: 'READ' },
+            description: 'identidad_visual canónico (HEX_LIST línea 1), arquetipo (mapeable a 5 visual cues concretos), ficha completa (de ahí se parsean teléfono y dirección), redes_urls (web + IG para contact strip), contenido_prohibido.',
+          },
+          {
+            label: 'Anti-duplicado',
+            resource: { type: 'supabase', name: 'READ creatividades', op: 'READ' },
+            description: 'Buscar covers previas del mismo source: origen=COVER AND tags LIKE %parent:SOURCE_ID%. Si existe, pedir confirmación al usuario.',
+          },
+        ],
+      },
+
+      procesamiento: {
+        title: 'Adaptar a 6 bloques + decidir contact strip + INSERT con reference',
+        executor: 'skill',
+        executorDetail: 'nora-creatividad-cover',
+        stateIn: null,
+        stateOut: 'para_ejecucion',
+        description: 'El skill reescribe el prompt Qwen como prompt gpt-image-2 en 6 bloques etiquetados (artifact / exact text / layout / visual system / details / constraints), mapea el arquetipo a 5 visual cues concretos, decide flexiblemente si incluir un footer contact strip según saturación visual del parent, valida moderación y hace INSERT con tags="parent:N" + url=parent.link_ren_1 (reference image).',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            creatividades: {
+              insert: [
+                'marca, origen=COVER, estado=para_ejecucion, condicion=null',
+                'prompt (6 bloques etiquetados, comillas francesas «», anti-adjetivo emocional)',
+                'slogan_headline (ALL CAPS), subtitulo, cta — truncados si excedían',
+                'concepto, copy, descripcion_corta (con flag arquetipo + contact_strip)',
+                'buyer_persona, dolor_anhelo, cambio_emocional, diferenciador, beneficios, objeciones_tipicas (copia del parent)',
+                'tags = "parent:{SOURCE_ID}"',
+                'url = parent.link_ren_1 ← reference image automática',
+                'gatillador = "skill: nora-creatividad-cover (parent: {SOURCE_ID})"',
+              ],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Truncar y normalizar textos',
+            resource: { type: 'skill', name: 'nora-creatividad-cover · paso 4' },
+            description: 'Headline ≤6 palabras ALL CAPS, subhead ≤8, CTA ≤3. Comillas francesas «». Si se trunca, registrar original en descripcion_corta.',
+          },
+          {
+            label: 'Adaptar prompt en 6 bloques etiquetados',
+            resource: { type: 'skill', name: 'nora-creatividad-cover · paso 5' },
+            description: 'Estructura canónica: ARTIFACT / EXACT TEXT (verbatim, comillas francesas) / LAYOUT (rule of thirds, áreas seguras) / VISUAL SYSTEM (paleta only + tipografía descriptiva + iconografía + arquetipo cues) / DETAILS (luz/lente/materiales en hechos visuales) / CONSTRAINTS (preserve Spanish accents, no duplicate text, no invented logos).',
+            details: [
+              'Comillas francesas «» para texto en imagen (más estables que "")',
+              'Keyword "only" en paleta reduce drift cromático ~40%',
+              'Tipografía descriptiva: heavy condensed geometric sans / light humanist serif italic',
+              'NO nombres de fonts comerciales (Helvetica/Futura) ni escuelas (Swiss/Bauhaus) — describir receta',
+              'NO adjetivos emocionales (stunning/masterpiece/8K) — solo hechos visuales (50mm, 5600K, polished metallic)',
+              'CONSTRAINTS obligatorio: preserve every Spanish accent á é í ó ú ñ',
+            ],
+          },
+          {
+            label: 'Mapear arquetipo Mark/Pearson → 5 visual cues',
+            resource: { type: 'skill', name: 'nora-creatividad-cover · §A' },
+            description: 'Tabla con los 12 arquetipos (Creator, Caregiver, Sage, Hero, Magician, Outlaw, Explorer, Innocent, Common Man, Lover, Joker, Ruler) traducidos a 3-5 visual cues concretos que gpt-image-2 reconoce. Si la marca no tiene arquetipo poblado, omitir esta sección.',
+          },
+          {
+            label: 'Decidir contact strip por saturación visual',
+            resource: { type: 'skill', name: 'nora-creatividad-cover · §C' },
+            description: 'Heurística sobre el prompt Qwen original: si menciona "minimalist/clean studio/single subject/negative space" → SÍ contact strip. Si menciona "complex/multiple subjects/dense/cluttered" → NO. Default a NO en duda.',
+            details: [
+              'Si SÍ: footer band 8% al pie con web + IG + tel + ciudad (line icons + texto verbatim)',
+              'Datos: redes_urls (web/IG) + regex sobre ficha (teléfono/dirección)',
+              'Si falta cualquier dato → omitir esa línea, nunca inventar',
+              'Si solo queda 1 dato → omitir el strip completo',
+            ],
+          },
+          {
+            label: 'Pre-check moderación',
+            resource: { type: 'skill', name: 'nora-creatividad-cover · paso 7' },
+            description: 'Validar contra contenido_prohibido de la marca + lista conocida moderation_blocked OpenAI (celebridades, IPs protegidas, símbolos sensibles). Logos de marca propia → NO pedir "draw the logo", usar reference image del parent.',
+          },
+          {
+            label: 'INSERT creatividad COVER con reference image',
+            resource: { type: 'supabase', name: 'INSERT creatividades', op: 'INSERT' },
+            description: 'Nueva fila con origen=COVER, prompt adaptado, tags="parent:{id}", url=parent.link_ren_1 (CLAVE — el script lo usa como image input del nodo OpenAIGPTImage1 → modo edit que preserva composición/paleta/mood del parent).',
+            stateChange: 'NULL → para_ejecucion',
+          },
+          {
+            label: 'Reportar al usuario',
+            resource: { type: 'skill', name: 'nora-creatividad-cover · paso 9' },
+            description: 'Devolver id nuevo + comando del script + headline/sub/CTA finales + arquetipo aplicado + flag contact_strip + costo (~13 créditos / $0.058).',
+          },
+        ],
+      },
+
+      ejecucion: {
+        title: 'ComfyUI Cloud — gpt-image-2 con reference image',
+        executor: 'script',
+        executorDetail: 'comfy-cloud-t2i-gpt2.mjs',
+        stateIn: 'para_ejecucion',
+        stateOut: null,
+        description: 'El script lee creatividades con origen=COVER en para_ejecucion. Si tienen url poblado (link_ren_1 del parent), descarga esa imagen, la sube al Cloud como input y la pasa al nodo OpenAIGPTImage1 como image input → modo edit que preserva composición/paleta/mood. Si no tiene url, modo text-only. Polling /api/job/{id}/status cada 3s. Si falla, marca estado=error con observacion=[auto] mensaje.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'prompt', 'marca', 'url'],
+          },
+          writes: {
+            creatividades: {
+              update_on_pickup: ['estado → en_proceso'],
+              update_on_error: ['estado → error', 'observacion → [auto] mensaje'],
+            },
+          },
+          filters: ['estado = para_ejecucion', 'origen = COVER', 'prompt NOT NULL'],
+        },
+        steps: [
+          {
+            label: 'Marcar en_proceso',
+            resource: { type: 'supabase', name: 'PATCH creatividades', op: 'UPDATE' },
+            description: 'Previene doble pickup en ejecuciones concurrentes.',
+            stateChange: 'para_ejecucion → en_proceso',
+          },
+          {
+            label: 'Si url existe: subir reference image al Cloud',
+            resource: { type: 'script', name: 'fetchReferenceBuffer + uploadFile' },
+            description: 'GET sobre creatividad.url → buffer → POST /api/upload/image (type=input). Devuelve filename para referenciar desde el workflow.',
+          },
+          {
+            label: 'Construir workflow Cloud',
+            resource: { type: 'script', name: 'buildWorkflow(prompt, referenceFilename)' },
+            description: '2-3 nodos comfy-core (sin ImageScale — output 1024×1536 nativo):',
+            details: [
+              '1: OpenAIGPTImage1 — model=gpt-image-2, quality=medium, size=1024x1536, n=1',
+              '   + image=["10",0] si hay reference (modo edit con preservación)',
+              '10: LoadImage — solo si reference filename presente',
+              '3: SaveImage — filename_prefix=nora_gpt2cover (output 1024×1536 directo)',
+            ],
+          },
+          {
+            label: 'Submit a Cloud',
+            resource: { type: 'script', name: 'POST /api/prompt' },
+            description: 'Envío con extra_data.api_key_comfy_org para autenticar el nodo gpt-image-2 (créditos ComfyUI Cloud).',
+          },
+          {
+            label: 'Poll job status',
+            resource: { type: 'script', name: 'GET /api/job/{id}/status' },
+            description: 'Cada 3s hasta completed/success o failed/error/cancelled. Reintentos 503 hasta 10 veces.',
+            details: ['Timeout total: 10 minutos'],
+          },
+          {
+            label: 'Descargar imagen',
+            resource: { type: 'script', name: 'GET /api/history_v2/{id} + /api/view' },
+            description: 'Lee el output del SaveImage y descarga el PNG vía /api/view con X-API-Key.',
+          },
+        ],
+        meta: [
+          { icon: '☁️', label: 'Backend', value: 'ComfyUI Cloud · cloud.comfy.org' },
+          { icon: '🧠', label: 'Modelo', value: 'gpt-image-2 (versión más reciente del nodo OpenAIGPTImage1)' },
+          { icon: '🎚️', label: 'Calidad', value: 'medium (siempre — costo predecible)' },
+          { icon: '📐', label: 'Tamaño', value: '1024×1536 (2:3) nativo · sin crop ni rescale' },
+          { icon: '🖼️', label: 'Reference image', value: 'creatividad.url → image input del nodo (modo edit que preserva composición del parent)' },
+          { icon: '⚠️', label: 'Límite', value: 'Máx 4/run (consistente con resto de pipelines)' },
+          { icon: '💳', label: 'Costo', value: '~13 créditos / ~$0.058 USD por cover (medium + reference image input)' },
+          { icon: '🚫', label: 'QA exclusión', value: 'nora-imagen-iteracion NO procesa origen=COVER (criterios pensados para imágenes sin texto baked-in)' },
+        ],
+      },
+
+      entrega: {
+        title: 'Upload Storage + actualizar creatividad',
+        executor: 'script',
+        executorDetail: 'comfy-cloud-t2i-gpt2.mjs',
+        stateIn: 'en_proceso',
+        stateOut: 'ejecutado',
+        description: 'Sube el PNG al bucket creatividades y deja la creatividad lista para revisión humana.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: ['{marca}_gpt2cover_{timestamp}.png → bucket creatividades'],
+            creatividades: {
+              update: ['link_ren_1 → URL pública', 'estado → ejecutado', 'condicion → para_revision'],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Subir imagen a Storage',
+            resource: { type: 'supabase', name: 'POST storage/v1/object/creatividades', op: 'INSERT' },
+            description: 'Upload directo del buffer PNG.',
+            details: ['Nombre: {marca}_gpt2cover_{timestamp}.png'],
+          },
+          {
+            label: 'Actualizar creatividad',
+            resource: { type: 'supabase', name: 'PATCH creatividades', op: 'UPDATE' },
+            description: 'Cierra el ciclo: estado=ejecutado, condicion=para_revision, link_ren_1=URL.',
+            stateChange: 'en_proceso → ejecutado',
+          },
+        ],
+      },
+    },
+  },
+
+  // ============================================================
   // Pipeline 3: Image-to-Image · Edición (Qwen Image Edit 2511)
   // ============================================================
   {
@@ -4003,6 +4278,263 @@ export const pipelines = [
             label: 'Cliente accede al reporte',
             resource: { type: 'usuario', name: 'NORA Dashboard — sección Reportes' },
             description: 'HTML interactivo con tabs, sparklines, hallazgos y próximos pasos.',
+          },
+        ],
+      },
+    },
+  },
+
+  // ============================================================
+  // Pipeline: Motion Graphics — Remotion (catalogo EffectsBibleVertical + PackCierre)
+  // ============================================================
+  {
+    id: 'motion-graphics-remotion',
+    title: 'Motion Graphics · Remotion',
+    subtitle: 'Spot animado multi-marca con catálogo EffectsBibleVertical (S01-S36) + PackCierre',
+    command: '/nora-motion-graphics',
+    status: 'activo',
+
+    executionBlocks: [
+      {
+        executor: 'usuario',
+        label: 'Usuario',
+        phases: ['activador'],
+        handoff: 'invoca skill',
+      },
+      {
+        executor: 'skill',
+        label: 'Skill: nora-motion-graphics',
+        phases: ['lectura', 'procesamiento'],
+        handoff: 'INSERT creatividad origen=motion_graphics',
+      },
+      {
+        executor: 'script',
+        label: 'Script: motion-graphics.mjs',
+        phases: ['ejecucion', 'entrega'],
+        handoff: 'creatividad base_lista → para_revision',
+      },
+      {
+        executor: 'usuario',
+        label: 'Revisión humana',
+        phases: ['observacion'],
+        handoff: 'aprueba en NORA dashboard',
+      },
+    ],
+
+    phases: {
+      activador: {
+        title: 'Instrucción directa',
+        executor: 'usuario',
+        stateIn: null,
+        stateOut: null,
+        description: 'El usuario invoca /nora-motion-graphics indicando marca, concepto y tipo (spot, recap, hook, anuncio).',
+        supabaseFields: { reads: {}, writes: {} },
+        steps: [
+          {
+            label: 'Instrucción del usuario',
+            resource: { type: 'usuario', name: 'Terminal Claude Code' },
+            description: 'Marca, concepto, tipo de pieza y mensaje principal.',
+            details: [
+              'marca — obligatorio (lookup en marcas)',
+              'concepto — qué comunica el video',
+              'tipo — spot, hook, recap, anuncio, etc.',
+              'duración objetivo — 20-30s típico',
+            ],
+          },
+        ],
+      },
+
+      lectura: {
+        title: 'Identidad de marca',
+        executor: 'skill',
+        executorDetail: 'nora-motion-graphics',
+        stateIn: null,
+        stateOut: null,
+        description: 'Lee identidad visual + logos + URL de la marca para construir paleta y pack de cierre.',
+        supabaseFields: {
+          reads: {
+            marcas: ['identidad_visual', 'logos', 'url_principal', 'tipografia', 'paleta_colores', 'arquetipo', 'buyer_persona'],
+          },
+          writes: {},
+        },
+        steps: [
+          {
+            label: 'Leer identidad de marca',
+            resource: { type: 'supabase', name: 'READ marcas', op: 'READ' },
+            description: 'identidad_visual (HEX_LIST canónico), logos (logo principal), url_principal (CTA).',
+            filter: 'marca = {marca}',
+          },
+        ],
+      },
+
+      procesamiento: {
+        title: 'Concepto + Libreto + Composición + INSERT',
+        executor: 'skill',
+        executorDetail: 'nora-motion-graphics',
+        stateIn: null,
+        stateOut: 'para_ejecucion',
+        description: 'Define libreto, elige 6-8 secuencias del catálogo EffectsBibleVertical, genera TSX dual (9:16 + 4:5), inserta creatividad con prompt JSON.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            creatividades: {
+              insert: [
+                'marca', 'estado → para_ejecucion', 'origen → motion_graphics', 'condicion → null',
+                'prompt → JSON {tsx_916, tsx_45, totalFrames, fps, compName}',
+                'concepto', 'slogan_headline', 'copy',
+              ],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'Concepto y libreto',
+            resource: { type: 'skill', name: 'nora-motion-graphics' },
+            description: 'Hook + 4-6 mensajes intermedios + CTA. 20-30s. Sin inventar stats.',
+          },
+          {
+            label: 'Selección de secuencias del catálogo',
+            resource: { type: 'doc', name: 'remotion-nora-shared/EffectsBibleVertical.tsx' },
+            description: 'Mín 6 secuencias S01-S36 (sin repetir categoría >2 veces). Combinar texto / texto+imagen / texto+ícono. VenetianBlindTransition entre bloques.',
+            details: [
+              'Texto solo: WordReveal, ImpactZoom, GradientWord, IntroducingStack, etc.',
+              'Texto+imagen: SplitText, FramedImageTypewriter, VideoOnPhone',
+              'Texto+ícono: WaitParticles, ViewCounter, ClockIcon, BatteryTurbocharge',
+              'Mockups: VideoMockup, Clapperboard, LogoSplash, MacNotification',
+              'Cierre: PackCierre 150f con sting de marca',
+            ],
+          },
+          {
+            label: 'Generar TSX dual',
+            resource: { type: 'skill', name: 'nora-motion-graphics' },
+            description: 'Un .tsx para 1080×1920 (vertical) y otro Feed para 1080×1350. Importa desde ./shared/.',
+          },
+          {
+            label: 'Insertar creatividad',
+            resource: { type: 'supabase', name: 'INSERT creatividades', op: 'INSERT' },
+            description: 'Creatividad con prompt JSON (tsx + metadata) y campos de copy.',
+            details: [
+              'estado: para_ejecucion',
+              'origen: motion_graphics',
+              'prompt: JSON {tsx_916, tsx_45, totalFrames, fps, compName}',
+              'concepto, slogan_headline, copy',
+            ],
+            stateChange: 'NULL → para_ejecucion',
+          },
+        ],
+      },
+
+      ejecucion: {
+        title: 'Render Remotion en PC-2',
+        executor: 'script',
+        executorDetail: 'motion-graphics.mjs',
+        stateIn: 'para_ejecucion',
+        stateOut: null,
+        description: 'El script marca en_proceso, copia los .tsx a PC-2, registra composiciones en Root.tsx idempotente, ejecuta render dual (1080×1920 + 1080×1350) vía npx remotion render.',
+        supabaseFields: {
+          reads: {
+            creatividades: ['id', 'prompt', 'marca', 'copy', 'slogan_headline', 'concepto'],
+          },
+          writes: {
+            creatividades: {
+              update_on_pickup: ['estado → en_proceso'],
+              update_on_error: ['estado → error', 'observacion → [auto] mensaje de error'],
+            },
+          },
+          filters: ['estado = para_ejecucion', 'origen = motion_graphics', 'prompt NOT NULL'],
+        },
+        steps: [
+          {
+            label: 'Pickup creatividad',
+            resource: { type: 'script', name: 'motion-graphics.mjs → GET creatividades' },
+            description: 'Filtros: estado=para_ejecucion, origen=motion_graphics, prompt NOT NULL. Cap --max=1.',
+          },
+          {
+            label: 'Parse JSON y escribir TSX',
+            resource: { type: 'script', name: 'motion-graphics.mjs → fs.writeFileSync' },
+            description: 'Extrae tsx_916 y tsx_45 del prompt JSON, los escribe en tmp_motion_graphics/.',
+          },
+          {
+            label: 'Copiar TSX a PC-2',
+            resource: { type: 'script', name: 'motion-graphics.mjs → scp' },
+            description: 'SCP {compName}.tsx + {compName}Feed.tsx a ${REMOTION_DIR}\\src\\.',
+          },
+          {
+            label: 'Patch Root.tsx idempotente',
+            resource: { type: 'script', name: 'motion-graphics.mjs → ssh + scp' },
+            description: 'Lee Root.tsx, agrega imports y bloques <Composition> si no existen. SCP de vuelta.',
+          },
+          {
+            label: 'Render 9:16 + 4:5',
+            resource: { type: 'script', name: 'motion-graphics.mjs → ssh remotion render' },
+            description: 'Dual render: 1080×1920 (compName) + 1080×1350 (compNameFeed). Timeout 15min cada uno.',
+          },
+        ],
+        meta: [
+          { icon: '⚙️', label: 'Hardware', value: 'PC-2: RTX 5080 (Remotion render)' },
+          { icon: '⏱️', label: 'Tiempo', value: '~3-6 min/video (2 renders dual)' },
+          { icon: '⚠️', label: 'Límite', value: 'Máx 1 video por corrida (--max=1 default)' },
+          { icon: '📚', label: 'Biblioteca', value: 'remotion-nora-shared/ (versionada en repo, sincronizada a PC-2 src/shared/)' },
+        ],
+      },
+
+      entrega: {
+        title: 'Upload Storage + actualizar creatividad',
+        executor: 'script',
+        executorDetail: 'motion-graphics.mjs',
+        stateIn: 'en_proceso',
+        stateOut: 'base_lista',
+        description: 'Descarga ambos MP4 desde PC-2, sube a Supabase Storage y actualiza la creatividad con ambos links.',
+        supabaseFields: {
+          reads: {},
+          writes: {
+            storage: [
+              '{marca}_motion_graphics_{id}_916_{ts}.mp4 → bucket creatividades (1080×1920)',
+              '{marca}_motion_graphics_{id}_45_{ts}.mp4 → bucket creatividades (1080×1350)',
+            ],
+            creatividades: {
+              update: [
+                'link_ren_2 → URL pública 9:16',
+                'link_ren_1 → URL pública 4:5',
+                'estado → base_lista',
+                'condicion → para_revision',
+              ],
+            },
+          },
+        },
+        steps: [
+          {
+            label: 'SCP-from PC-2',
+            resource: { type: 'script', name: 'motion-graphics.mjs → scp' },
+            description: 'SCP inverso: out/{compName}.mp4 + out/{compName}Feed.mp4 → Mac local.',
+          },
+          {
+            label: 'Upload Storage',
+            resource: { type: 'supabase', name: 'PUT storage (upsert)', op: 'UPSERT' },
+            description: 'Sube ambos MP4 al bucket creatividades.',
+          },
+          {
+            label: 'Actualizar creatividad',
+            resource: { type: 'supabase', name: 'UPDATE creatividades', op: 'UPDATE' },
+            description: 'Registra ambos links y cambia el estado.',
+            stateChange: 'en_proceso → base_lista',
+          },
+        ],
+      },
+
+      observacion: {
+        title: 'Revisión humana',
+        executor: 'skill',
+        stateIn: 'para_revision',
+        stateOut: null,
+        description: 'Jorge revisa los videos en NORA dashboard. Si observa algo, deja observación. La skill puede regenerar el TSX y crear una nueva creatividad.',
+        manual: true,
+        supabaseFields: { reads: { creatividades: ['link_ren_1', 'link_ren_2', 'observacion'] }, writes: {} },
+        steps: [
+          {
+            label: 'Revisión en NORA',
+            resource: { type: 'usuario', name: 'NORA Dashboard' },
+            description: 'Visualiza ambos formatos. Aprueba o deja observación.',
           },
         ],
       },
