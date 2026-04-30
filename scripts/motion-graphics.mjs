@@ -95,8 +95,12 @@ function scp(localPath, remotePath) {
 }
 
 function scpFrom(remotePath, localPath) {
-  const cmd = `scp ${SSH_HOST}:"${remotePath}" "${localPath}"`;
-  log(`SCP from PC2: ${remotePath} → ${localPath}`);
+  // Convert Windows backslashes → forward slashes for the remote path.
+  // Without this, scp fails with "protocol error: filename does not match request"
+  // (mismo patrón que postprod-ugc.mjs y otros scripts del codebase).
+  const safePath = remotePath.replace(/\\/g, '/');
+  const cmd = `scp ${SSH_HOST}:"${safePath}" "${localPath}"`;
+  log(`SCP: ${remotePath} → ${localPath}`);
   execSync(cmd, { encoding: 'utf-8', timeout: 300000 });
 }
 
@@ -199,8 +203,13 @@ function parseSpec(promptString, fallbackMarca, fallbackId) {
     throw new Error('prompt JSON debe incluir totalFrames (número)');
   }
   const fps = spec.fps ?? 30;
-  const slug = (fallbackMarca || 'marca').toLowerCase().replace(/[^a-z0-9]/g, '_');
-  const compName = spec.compName || `${slug}_MG_${fallbackId}`;
+  // compName must satisfy BOTH: JS identifier (no `-`, no spaces) AND Remotion id regex (a-zA-Z0-9-, no `_`).
+  // Intersection = letters + numbers only. No `_`, no `-`.
+  const slug = (fallbackMarca || 'marca').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const compName = spec.compName || `${slug}MG${fallbackId}`;
+  if (!/^[a-zA-Z0-9]+$/.test(compName)) {
+    throw new Error(`compName inválido: "${compName}". Debe ser solo letras + números (sin _, -, espacios). Remotion id regex no acepta _.`);
+  }
   return { ...spec, fps, compName };
 }
 

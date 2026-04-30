@@ -1924,3 +1924,10 @@ export const EffectsBibleVertical: React.FC = () => {
     </GlitchWrapper>
   );
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PUBLIC API — wrappers compartidos genuinos
+// Las secuencias S01..S36 NO se exportan: son patrones de referencia para
+// COPIAR e inline en TSX monolíticos por marca (ver CATALOGO.md).
+// ═══════════════════════════════════════════════════════════════════════════
+export { GlitchWrapper, VenetianBlindTransition, GlitchTransition };

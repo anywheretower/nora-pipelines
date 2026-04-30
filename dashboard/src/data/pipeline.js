@@ -4290,7 +4290,7 @@ export const pipelines = [
   {
     id: 'motion-graphics-remotion',
     title: 'Motion Graphics · Remotion',
-    subtitle: 'Spot animado multi-marca con catálogo EffectsBibleVertical (S01-S36) + PackCierre',
+    subtitle: 'Spot animado multi-marca: TSX monolítico copy-paste (catálogo EffectsBibleVertical como referencia, no librería runtime) + bed musical ambient + sting de cierre',
     command: '/nora-motion-graphics',
     status: 'activo',
 
@@ -4345,15 +4345,15 @@ export const pipelines = [
       },
 
       lectura: {
-        title: 'Identidad de marca',
+        title: 'Identidad de marca + assets en PC-2',
         executor: 'skill',
         executorDetail: 'nora-motion-graphics',
         stateIn: null,
         stateOut: null,
-        description: 'Lee identidad visual + logos + URL de la marca para construir paleta y pack de cierre.',
+        description: 'Lee identidad visual + logos + redes_urls + tipografia + arquetipo de la marca. Verifica que existan los assets de audio en PC-2 (sting de cierre, music bed). Si la marca no tiene bed, generar con scripts/musicgen-brand-bed.py.',
         supabaseFields: {
           reads: {
-            marcas: ['identidad_visual', 'logos', 'url_principal', 'tipografia', 'paleta_colores', 'arquetipo', 'buyer_persona'],
+            marcas: ['identidad_visual', 'logos', 'redes_urls', 'tipografia', 'paleta_colores', 'arquetipo'],
           },
           writes: {},
         },
@@ -4361,19 +4361,24 @@ export const pipelines = [
           {
             label: 'Leer identidad de marca',
             resource: { type: 'supabase', name: 'READ marcas', op: 'READ' },
-            description: 'identidad_visual (HEX_LIST canónico), logos (logo principal), url_principal (CTA).',
+            description: 'identidad_visual (HEX_LIST canónico), logos, redes_urls (URL para CTA), tipografia, arquetipo (tono).',
             filter: 'marca = {marca}',
+          },
+          {
+            label: 'Verificar assets PC-2',
+            resource: { type: 'doc', name: '${REMOTION_DIR}\\public\\music\\ + \\images\\logos\\' },
+            description: 'Confirma que existan {slug}_cierre_sting.wav, {slug}_ambient_bed.wav y {slug}_logo_X.png. Si falta el bed, generar con musicgen-brand-bed.py antes del INSERT.',
           },
         ],
       },
 
       procesamiento: {
-        title: 'Concepto + Libreto + Composición + INSERT',
+        title: 'Concepto + Libreto + TSX monolítico + INSERT',
         executor: 'skill',
         executorDetail: 'nora-motion-graphics',
         stateIn: null,
         stateOut: 'para_ejecucion',
-        description: 'Define libreto, elige 6-8 secuencias del catálogo EffectsBibleVertical, genera TSX dual (9:16 + 4:5), inserta creatividad con prompt JSON.',
+        description: 'Define libreto, elige 6-8 secuencias del catálogo (copy-paste), genera TSX dual (9:16 + 4:5) self-contained con audio bed + sting integrados, inserta creatividad con prompt JSON.',
         supabaseFields: {
           reads: {},
           writes: {
@@ -4393,21 +4398,31 @@ export const pipelines = [
             description: 'Hook + 4-6 mensajes intermedios + CTA. 20-30s. Sin inventar stats.',
           },
           {
-            label: 'Selección de secuencias del catálogo',
+            label: 'Selección y copy-paste de secuencias',
             resource: { type: 'doc', name: 'remotion-nora-shared/EffectsBibleVertical.tsx' },
-            description: 'Mín 6 secuencias S01-S36 (sin repetir categoría >2 veces). Combinar texto / texto+imagen / texto+ícono. VenetianBlindTransition entre bloques.',
+            description: 'Mín 6 secuencias del catálogo (sin repetir categoría >2 veces). Las secuencias S01-S36 NO se importan: se COPIA su código inline al TSX y se reemplazan textos/colores/imágenes por los de la marca. Manten timings, springs y layouts del catálogo.',
             details: [
               'Texto solo: WordReveal, ImpactZoom, GradientWord, IntroducingStack, etc.',
               'Texto+imagen: SplitText, FramedImageTypewriter, VideoOnPhone',
               'Texto+ícono: WaitParticles, ViewCounter, ClockIcon, BatteryTurbocharge',
               'Mockups: VideoMockup, Clapperboard, LogoSplash, MacNotification',
-              'Cierre: PackCierre 150f con sting de marca',
+              'Cierre: PackCierre 150f con sting de marca (puede ser inline o import)',
             ],
           },
           {
-            label: 'Generar TSX dual',
+            label: 'Generar TSX dual monolítico',
             resource: { type: 'skill', name: 'nora-motion-graphics' },
-            description: 'Un .tsx para 1080×1920 (vertical) y otro Feed para 1080×1350. Importa desde ./shared/.',
+            description: 'Un .tsx self-contained para 1080×1920 + otro Feed para 1080×1350. NO importa S0X (son privadas). Único import compartido válido: PackCierre desde ./shared/PackCierre. GlitchWrapper, VenetianBlindTransition y GlitchTransition pueden ser inline o importados de ./shared/EffectsBibleVertical.',
+          },
+          {
+            label: 'Integrar audio (bed + sting)',
+            resource: { type: 'doc', name: 'public/music/{slug}_ambient_bed.wav + _cierre_sting.wav' },
+            description: 'Audio bed root con envelope (fade-in/fade-out, volume 0.55) durante el cuerpo. Sting volume 1.0 dentro del PackCierre. Bed termina 1s antes del PackCierre para no superponer.',
+            details: [
+              'Bed: <Audio src={BED} volume={(f) => interpolate(f, [0, 20, frame_PC-75, frame_PC-30], [0, 0.55, 0.55, 0])}/>',
+              'Sting: <Audio src={STING} volume={1.0} /> dentro de PackCierre',
+              'Si la marca no tiene bed, generar con scripts/musicgen-brand-bed.py --slug {slug}',
+            ],
           },
           {
             label: 'Insertar creatividad',
@@ -4417,6 +4432,7 @@ export const pipelines = [
               'estado: para_ejecucion',
               'origen: motion_graphics',
               'prompt: JSON {tsx_916, tsx_45, totalFrames, fps, compName}',
+              'compName: solo letras+números (regex ^[a-zA-Z0-9]+$). NO _, NO -, NO espacios',
               'concepto, slogan_headline, copy',
             ],
             stateChange: 'NULL → para_ejecucion',
@@ -4472,9 +4488,9 @@ export const pipelines = [
         ],
         meta: [
           { icon: '⚙️', label: 'Hardware', value: 'PC-2: RTX 5080 (Remotion render)' },
-          { icon: '⏱️', label: 'Tiempo', value: '~3-6 min/video (2 renders dual)' },
+          { icon: '⏱️', label: 'Tiempo', value: '~12s/video (dual 1080×1920 + 1080×1350, 605 frames @ 30fps validado RTK)' },
           { icon: '⚠️', label: 'Límite', value: 'Máx 1 video por corrida (--max=1 default)' },
-          { icon: '📚', label: 'Biblioteca', value: 'remotion-nora-shared/ (versionada en repo, sincronizada a PC-2 src/shared/)' },
+          { icon: '📚', label: 'Biblioteca', value: 'remotion-nora-shared/ (PackCierre + theme + components compartidos; EffectsBibleVertical.tsx es referencia copy-paste, no librería runtime)' },
         ],
       },
 
@@ -4506,7 +4522,7 @@ export const pipelines = [
           {
             label: 'SCP-from PC-2',
             resource: { type: 'script', name: 'motion-graphics.mjs → scp' },
-            description: 'SCP inverso: out/{compName}.mp4 + out/{compName}Feed.mp4 → Mac local.',
+            description: 'SCP inverso: out/{compName}.mp4 + out/{compName}Feed.mp4 → Mac local. Requiere replace(/\\\\/g, \'/\') del remote path para que scp Mac acepte el path Windows.',
           },
           {
             label: 'Upload Storage',
